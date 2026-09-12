@@ -1,0 +1,220 @@
+import json
+from pathlib import Path
+
+notebook_dir = Path(__file__).resolve().parent.parent / "notebooks"
+notebook_dir.mkdir(parents=True, exist_ok=True)
+
+notebook = {
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# USIP (Underwater Sonar Intelligence Platform) — Colab Training Bridge\n",
+    "\n",
+    "This Google Colab notebook provides **GPU-accelerated model training** for the USIP prototype:\n",
+    "1. **Known Target Fine-Tuning** (Shipwrecks, Pipelines, Debris/Objects) using YOLOv8/YOLOv11.\n",
+    "2. **Acoustic Anomaly Encoder / VAE Training** on unlabelled sonar background patches.\n",
+    "3. **Export Weights** directly back to your local repository or Google Drive."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": None,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# 1. Verify GPU Acceleration\n",
+    "!nvidia-smi\n",
+    "import torch\n",
+    "print(f\"PyTorch Version: {torch.__version__}\")\n",
+    "print(f\"CUDA Available: {torch.cuda.is_available()}\")\n",
+    "if torch.cuda.is_available():\n",
+    "    print(f\"Active Device: {torch.cuda.get_device_name(0)}\")\n",
+    "else:\n",
+    "    print(\"WARNING: Running on CPU. Please switch Colab Runtime to T4 GPU (Runtime -> Change runtime type -> T4 GPU).\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": None,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# 2. Install High-Performance Sonar ML Dependencies\n",
+    "!pip install -q ultralytics albumentations opencv-python-headless timm"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": None,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# 3. Mount Google Drive (Optional: to access datasets or save trained models)\n",
+    "from google.colab import drive\n",
+    "import os\n",
+    "\n",
+    "drive.mount('/content/drive')\n",
+    "DRIVE_WORKSPACE = '/content/drive/MyDrive/USIP_Models'\n",
+    "os.makedirs(DRIVE_WORKSPACE, exist_ok=True)\n",
+    "print(f\"Checkpoint directory ready at: {DRIVE_WORKSPACE}\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### 4. Known Target Detector Training (YOLOv8)\n",
+    "We configure the 3 target classes: `Shipwreck`, `Pipeline`, `Debris`."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": None,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import yaml\n",
+    "\n",
+    "data_yaml = {\n",
+    "    'path': '/content/dataset',\n",
+    "    'train': 'images/train',\n",
+    "    'val': 'images/val',\n",
+    "    'names': {\n",
+    "        0: 'Shipwreck',\n",
+    "        1: 'Pipeline',\n",
+    "        2: 'Debris'\n",
+    "    }\n",
+    "}\n",
+    "\n",
+    "with open('/content/usip_sonar.yaml', 'w') as f:\n",
+    "    yaml.dump(data_yaml, f)\n",
+    "\n",
+    "print(\"Sonar dataset configuration created at /content/usip_sonar.yaml\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": None,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from ultralytics import YOLO\n",
+    "\n",
+    "# Load lightweight YOLOv8 nano / small pretrained on underwater/visual features\n",
+    "model = YOLO('yolov8n.pt')\n",
+    "\n",
+    "# Train with Sonar-tailored Hyperparameters\n",
+    "# - Single channel/grayscale augmentations\n",
+    "# - Reduced color jitter, increased scale/translation\n",
+    "print(\"Ready to initiate training on GPU:\")\n",
+    "# results = model.train(\n",
+    "#     data='/content/usip_sonar.yaml',\n",
+    "#     epochs=50,\n",
+    "#     imgsz=640,\n",
+    "#     batch=16,\n",
+    "#     device=0,\n",
+    "#     name='usip_detector_v1'\n",
+    "# )"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### 5. Unsupervised Anomaly VAE & SSL Training on Unlabelled Sonar Data\n",
+    "Trains directly on unlabelled sonar seabed patches from `sss_ssl_dataset_N713_384`.\n",
+    "Normal seafloor achieves low reconstruction loss and dense clustering, while novel targets produce distinct high-anomaly signatures."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": None,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Extract unlabelled SSS SSL patches from multi-volume archive in Colab\n",
+    "!apt-get install -y -q p7zip-full\n",
+    "# If sss_ssl_dataset is uploaded to Google Drive:\n",
+    "# !7z x /content/drive/MyDrive/sss_ssl_dataset_N713_384.zip -o/content/unlabelled_sonar/ -y\n",
+    "print(\"7-Zip ready to extract unlabelled sonar multi-volume dataset.\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": None,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import torch\n",
+    "import torch.nn as nn\n",
+    "\n",
+    "class SonarPatchAutoencoder(nn.Module):\n",
+    "    def __init__(self, latent_dim=64):\n",
+    "        super().__init__()\n",
+    "        # Encoder\n",
+    "        self.encoder = nn.Sequential(\n",
+    "            nn.Conv2d(1, 32, 4, stride=2, padding=1), # 32x32\n",
+    "            nn.ReLU(),\n",
+    "            nn.Conv2d(32, 64, 4, stride=2, padding=1), # 16x16\n",
+    "            nn.ReLU(),\n",
+    "            nn.Conv2d(64, 128, 4, stride=2, padding=1), # 8x8\n",
+    "            nn.ReLU(),\n",
+    "            nn.Flatten(),\n",
+    "            nn.Linear(128 * 8 * 8, latent_dim)\n",
+    "        )\n",
+    "        # Decoder\n",
+    "        self.decoder = nn.Sequential(\n",
+    "            nn.Linear(latent_dim, 128 * 8 * 8),\n",
+    "            nn.Unflatten(1, (128, 8, 8)),\n",
+    "            nn.ConvTranspose2d(128, 64, 4, stride=2, padding=1),\n",
+    "            nn.ReLU(),\n",
+    "            nn.ConvTranspose2d(64, 32, 4, stride=2, padding=1),\n",
+    "            nn.ReLU(),\n",
+    "            nn.ConvTranspose2d(32, 1, 4, stride=2, padding=1),\n",
+    "            nn.Sigmoid()\n",
+    "        )\n",
+    "\n",
+    "    def forward(self, x):\n",
+    "        z = self.encoder(x)\n",
+    "        recon = self.decoder(z)\n",
+    "        return recon, z\n",
+    "\n",
+    "ae = SonarPatchAutoencoder().cuda() if torch.cuda.is_available() else SonarPatchAutoencoder()\n",
+    "print(\"Sonar Patch Autoencoder instantiated:\", ae)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### 6. Export Trained Models for Local USIP Dashboard\n",
+    "Run this cell after training finishes to save weights to Google Drive."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": None,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "!cp -r runs/detect/usip_detector_v1/weights/best.pt /content/drive/MyDrive/USIP_Models/usip_detector.pt 2>/dev/null || echo \"Train a run first to copy.\"\n",
+    "print(\"Trained model saved. You can place 'usip_detector.pt' into 'backend/models/' in your local workspace!\")"
+   ]
+  }
+ ],
+ "metadata": {
+  "accelerator": "GPU",
+  "language_info": {
+   "name": "python"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}
+
+with open(notebook_dir / "USIP_Colab_Model_Training.ipynb", "w", encoding="utf-8") as f:
+    json.dump(notebook, f, indent=2)
+
+print(f"Generated notebook at {notebook_dir / 'USIP_Colab_Model_Training.ipynb'}")

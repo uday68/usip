@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>USIP — Underwater Sonar Intelligence Platform</title>
+    <!-- Tailwind CSS CDN for instant styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Leaflet.js for Real-Time Geotagged Sonar Map -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        marine: {
+                            950: '#060a12',
+                            900: '#0a101d',
+                            850: '#0e172a',
+                            800: '#132038',
+                            700: '#1e3052',
+                            600: '#2d4675',
+                            500: '#3b82f6',
+                            accent: '#06b6d4',
+                            target: '#10b981',
+                            anomaly: '#f59e0b',
+                            critical: '#ef4444'
+                        }
+                    },
+                    fontFamily: {
+                        mono: ['JetBrains Mono', 'Consolas', 'Courier New', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom tactical scanlines & scrollbars */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0a101d; }
+        ::-webkit-scrollbar-thumb { background: #1e3052; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #06b6d4; }
+        .sonar-grid {
+            background-image: linear-gradient(rgba(6, 182, 212, 0.05) 1px, transparent 1px),
+                              linear-gradient(90deg, rgba(6, 182, 212, 0.05) 1px, transparent 1px);
+            background-size: 30px 30px;
+        }
+        .glow-target { box-shadow: 0 0 15px rgba(16, 185, 129, 0.4); }
+        .glow-anomaly { box-shadow: 0 0 15px rgba(245, 158, 11, 0.4); }
+        .glow-accent { box-shadow: 0 0 15px rgba(6, 182, 212, 0.3); }
+        .ping-radar {
+            position: absolute;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, rgba(6, 182, 212, 0.8), transparent);
+            animation: scan 4s linear infinite;
+        }
+        @keyframes scan {
+            0% { top: 0%; opacity: 0.1; }
+            50% { opacity: 0.8; }
+            100% { top: 100%; opacity: 0.1; }
+        }
+    </style>
+</head>
+<body class="bg-marine-950 text-slate-200 min-h-screen flex flex-col font-sans select-none overflow-x-hidden">
+
+    <!-- Top Navigation Header -->
+    <header class="bg-marine-900 border-b border-marine-700 px-6 py-3 flex items-center justify-between shadow-xl relative z-20">
+        <div class="flex items-center space-x-3">
+            <div class="p-2 bg-marine-800 rounded-lg border border-marine-accent text-marine-accent glow-accent">
+                <i data-lucide="waves" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <div class="flex items-center space-x-2">
+                    <span class="text-xl font-bold tracking-wider text-white">USIP</span>
+                    <span class="text-xs bg-marine-700 text-marine-accent px-2 py-0.5 rounded font-mono border border-marine-600">v1.0-PROTOTYPE</span>
+                    <span class="text-xs bg-emerald-950 text-emerald-400 px-2 py-0.5 rounded font-mono border border-emerald-700 flex items-center gap-1">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> SYSTEM READY
+                    </span>
+                </div>
+                <div class="text-xs text-slate-400 font-mono tracking-tight">Underwater Sonar Intelligence Platform • Side-Scan Sonar Target & Anomaly Discovery</div>
+            </div>
+        </div>
+
+        <!-- Telemetry Status Bar -->
+        <div class="hidden lg:flex items-center space-x-6 text-xs font-mono bg-marine-850 px-4 py-2 rounded-lg border border-marine-700">
+            <div class="flex items-center space-x-1.5 text-slate-300">
+                <i data-lucide="cpu" class="w-4 h-4 text-marine-accent"></i>
+                <span class="text-slate-400">HARDWARE:</span>
+                <span id="gpuStatus" class="text-emerald-400 font-semibold">NVIDIA RTX 3050 (4GB)</span>
+            </div>
+            <div class="h-4 w-px bg-marine-700"></div>
+            <div class="flex items-center space-x-1.5 text-slate-300">
+                <i data-lucide="hard-drive" class="w-4 h-4 text-marine-accent"></i>
+                <span class="text-slate-400">DATASETS:</span>
+                <span class="text-slate-200">AI4Shipwrecks | AquaScan | SubPipe (D:\)</span>
+            </div>
+            <div class="h-4 w-px bg-marine-700"></div>
+            <div class="flex items-center space-x-1.5 text-slate-300">
+                <i data-lucide="cloud" class="w-4 h-4 text-amber-400"></i>
+                <a href="#colabModal" onclick="openColabModal()" class="text-amber-400 hover:text-amber-300 underline font-semibold flex items-center gap-1">
+                    Google Colab GPU Bridge
+                </a>
+            </div>
+        </div>
+
+        <!-- Mission Action Controls -->
+        <div class="flex items-center space-x-3">
+            <button onclick="exportReport('json')" class="px-3 py-1.5 bg-marine-800 hover:bg-marine-700 text-xs font-mono text-slate-200 rounded border border-marine-600 flex items-center space-x-1.5 transition">
+                <i data-lucide="file-json" class="w-4 h-4 text-marine-accent"></i>
+                <span>Export JSON</span>
+            </button>
+            <button onclick="exportReport('csv')" class="px-3 py-1.5 bg-marine-800 hover:bg-marine-700 text-xs font-mono text-slate-200 rounded border border-marine-600 flex items-center space-x-1.5 transition">
+                <i data-lucide="table" class="w-4 h-4 text-marine-target"></i>
+                <span>Export CSV</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Quick Demo Preset Bar -->
+    <div class="bg-marine-900/80 border-b border-marine-800 px-6 py-2.5 flex items-center justify-between text-xs overflow-x-auto gap-4">
+        <div class="flex items-center space-x-2 text-slate-400 font-mono flex-shrink-0">
+            <i data-lucide="play-circle" class="w-4 h-4 text-marine-accent"></i>
+            <span class="uppercase tracking-wider font-semibold text-slate-300">Judge Demo Presets:</span>
+        </div>
+        <div class="flex items-center space-x-2 flex-grow overflow-x-auto py-0.5">
+            <button onclick="loadDemoSample('shipwreck_1')" class="demo-btn px-2.5 py-1 rounded bg-marine-800 hover:bg-marine-700 text-slate-200 border border-marine-600 font-mono flex items-center space-x-1.5 transition flex-shrink-0">
+                <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                <span>Wreck 1 (E.B. Allen)</span>
+            </button>
+            <button onclick="loadDemoSample('shipwreck_2')" class="demo-btn px-2.5 py-1 rounded bg-marine-800 hover:bg-marine-700 text-slate-200 border border-marine-600 font-mono flex items-center space-x-1.5 transition flex-shrink-0">
+                <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                <span>Wreck 2 (D.R. Hanna)</span>
+            </button>
+            <button onclick="loadDemoSample('shipwreck_3')" class="demo-btn px-2.5 py-1 rounded bg-marine-800 hover:bg-marine-700 text-slate-200 border border-marine-600 font-mono flex items-center space-x-1.5 transition flex-shrink-0">
+                <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                <span>Wreck 3 (Isaac Scott - 524ft)</span>
+            </button>
+            <button onclick="loadDemoSample('shipwreck_4')" class="demo-btn px-2.5 py-1 rounded bg-marine-800 hover:bg-marine-700 text-slate-200 border border-marine-600 font-mono flex items-center space-x-1.5 transition flex-shrink-0">
+                <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                <span>Wreck 4 (Pewabic)</span>
+            </button>
+            <button onclick="loadDemoSample('pipe_1')" class="demo-btn px-2.5 py-1 rounded bg-marine-800 hover:bg-marine-700 text-slate-200 border border-marine-600 font-mono flex items-center space-x-1.5 transition flex-shrink-0">
+                <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                <span>Pipeline 1 (SubPipe)</span>
+            </button>
+            <button onclick="loadDemoSample('pipe_2')" class="demo-btn px-2.5 py-1 rounded bg-marine-800 hover:bg-marine-700 text-slate-200 border border-marine-600 font-mono flex items-center space-x-1.5 transition flex-shrink-0">
+                <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                <span>Pipeline 2 (Field Joint)</span>
+            </button>
+            <button onclick="loadDemoSample('debris_1')" class="demo-btn px-2.5 py-1 rounded bg-marine-800 hover:bg-marine-700 text-slate-200 border border-marine-600 font-mono flex items-center space-x-1.5 transition flex-shrink-0">
+                <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                <span>Debris 1 (AquaScan)</span>
+            </button>
+            <button onclick="loadDemoSample('debris_2')" class="demo-btn px-2.5 py-1 rounded bg-marine-800 hover:bg-marine-700 text-slate-200 border border-marine-600 font-mono flex items-center space-x-1.5 transition flex-shrink-0">
+                <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                <span>Debris 2 (Target on Ripple)</span>
+            </button>
+            <button onclick="loadDemoSample('ssl_seabed_1')" class="demo-btn px-2.5 py-1 rounded bg-marine-800 hover:bg-marine-700 text-cyan-300 border border-cyan-700 font-mono flex items-center space-x-1.5 transition flex-shrink-0">
+                <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+                <span>Unlabelled SSL Seabed #1</span>
+            </button>
+            <button onclick="loadDemoSample('ssl_seabed_2')" class="demo-btn px-2.5 py-1 rounded bg-marine-800 hover:bg-marine-700 text-cyan-300 border border-cyan-700 font-mono flex items-center space-x-1.5 transition flex-shrink-0">
+                <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+                <span>Unlabelled SSL Seabed #2</span>
+            </button>
+            <button onclick="loadDemoSample('anomaly_1')" class="demo-btn px-2.5 py-1 rounded bg-amber-950/60 hover:bg-amber-900/60 text-amber-300 border border-amber-600 font-mono flex items-center space-x-1.5 transition flex-shrink-0">
+                <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+                <span>Acoustic Anomaly [Exp]</span>
+            </button>
+        </div>
+
+        <!-- Custom Upload Trigger -->
+        <label class="px-3 py-1 bg-marine-700 hover:bg-marine-600 text-white rounded font-mono flex items-center space-x-1.5 cursor-pointer transition border border-marine-500 flex-shrink-0">
+            <i data-lucide="upload" class="w-3.5 h-3.5 text-marine-accent"></i>
+            <span>Upload Sonar File</span>
+            <input type="file" id="fileInput" accept="image/*" class="hidden" onchange="handleFileUpload(event)">
+        </label>
+    </div>
+
+    <!-- Main Workspace Layout -->
+    <div class="flex-1 grid grid-cols-12 gap-0 overflow-hidden">
+
+        <!-- Center: Interactive Sonar Viewport (8 Cols) -->
+        <main class="col-span-12 lg:col-span-8 bg-marine-950 flex flex-col border-r border-marine-800 relative">
+
+            <!-- Viewport Toolbar -->
+            <div class="h-10 bg-marine-900/60 border-b border-marine-800 px-4 flex items-center justify-between text-xs font-mono">
+                <div class="flex items-center space-x-4">
+                    <span id="imageTitle" class="text-slate-300 font-semibold truncate max-w-xs">sample_shipwreck_1.png</span>
+                    <span id="imageDim" class="text-slate-500">1728 x 1904 px</span>
+                </div>
+
+                <!-- Viewport Layer Toggles -->
+                <div class="flex items-center space-x-4">
+                    <label class="flex items-center space-x-1.5 cursor-pointer text-slate-300 hover:text-white">
+                        <input type="checkbox" id="toggleKnown" checked onchange="renderCanvas()" class="accent-emerald-500 rounded">
+                        <span class="text-emerald-400 font-semibold">Known Targets (BBox)</span>
+                    </label>
+                    <label class="flex items-center space-x-1.5 cursor-pointer text-slate-300 hover:text-white">
+                        <input type="checkbox" id="toggleAnomaly" checked onchange="renderCanvas()" class="accent-amber-500 rounded">
+                        <span class="text-amber-400 font-semibold">Anomaly Candidates [Exp]</span>
+                    </label>
+                    <label class="flex items-center space-x-1.5 cursor-pointer text-slate-300 hover:text-white">
+                        <input type="checkbox" id="toggleRaw" onchange="toggleRawMode()" class="accent-cyan-500 rounded">
+                        <span class="text-cyan-400 font-semibold">Raw / Enhanced SSS</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Canvas Container with Interactive Pan / Zoom -->
+            <div id="canvasContainer" class="flex-1 relative overflow-hidden sonar-grid flex items-center justify-center p-2">
+                <div class="ping-radar pointer-events-none"></div>
+
+                <!-- Loading State Overlay -->
+                <div id="loadingOverlay" class="absolute inset-0 bg-marine-950/80 backdrop-blur-sm z-30 flex flex-col items-center justify-center space-y-3 hidden">
+                    <div class="w-12 h-12 border-4 border-marine-accent border-t-transparent rounded-full animate-spin"></div>
+                    <div class="font-mono text-sm text-marine-accent tracking-widest animate-pulse">PROCESSING ACOUSTIC SIGNATURES...</div>
+                    <div class="font-mono text-xs text-slate-400">Executing Dual AI Detector + Sonar Physics Validation</div>
+                </div>
+
+                <!-- Sonar Canvas -->
+                <canvas id="sonarCanvas" class="max-h-full max-w-full rounded shadow-2xl cursor-crosshair border border-marine-700 bg-black"></canvas>
+            </div>
+
+            <!-- Viewport Bottom Status Bar -->
+            <div class="h-9 bg-marine-900 border-t border-marine-800 px-4 flex items-center justify-between text-xs font-mono text-slate-400">
+                <div class="flex items-center space-x-4">
+                    <span>SWATH: <strong class="text-cyan-400">120m (Port / Starboard)</strong></span>
+                    <span>FREQUENCY: <strong class="text-slate-200">455 kHz</strong></span>
+                    <span>ALTITUDE: <strong class="text-slate-200">14.2m</strong></span>
+                </div>
+                <div class="flex items-center space-x-3">
+                    <span id="crosshairCoord">Cursor: X: -- | Y: --</span>
+                    <button onclick="resetZoom()" class="hover:text-cyan-400 transition" title="Reset Zoom">
+                        <i data-lucide="maximize-2" class="w-3.5 h-3.5"></i>
+                    </button>
+                </div>
+            </div>
+        </main>
+
+        <!-- Right: Detections & Explainability Inspection Column (4 Cols) -->
+        <aside class="col-span-12 lg:col-span-4 bg-marine-900 flex flex-col overflow-y-auto">
+
+            <!-- Section 1: Ranked Detection Candidates -->
+            <div class="p-4 border-b border-marine-800">
+                <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center space-x-2">
+                        <i data-lucide="target" class="w-4 h-4 text-emerald-400"></i>
+                        <span class="font-mono text-xs font-bold uppercase tracking-wider text-slate-200">Acoustic Detections</span>
+                    </div>
+                    <span id="detectionCountBadge" class="px-2 py-0.5 rounded bg-marine-800 text-xs font-mono text-marine-accent border border-marine-700">6 Targets</span>
+                </div>
+
+                <!-- Detection Target List -->
+                <div id="targetList" class="space-y-2 max-h-60 overflow-y-auto pr-1 font-mono text-xs">
+                    <!-- Dynamic Target Items -->
+                </div>
+            </div>
+
+            <!-- Section 2: Sonar Physics & Explainability Card -->
+            <div class="p-4 border-b border-marine-800 bg-marine-850/60 flex-1">
+                <div class="flex items-center space-x-2 mb-3">
+                    <i data-lucide="shield-check" class="w-4 h-4 text-cyan-400"></i>
+                    <span class="font-mono text-xs font-bold uppercase tracking-wider text-slate-200">Acoustic Validation & Explainability</span>
+                </div>
+
+                <div id="selectedDetailCard" class="bg-marine-900 p-3.5 rounded-lg border border-marine-700 space-y-3 font-mono text-xs shadow-lg">
+                    <div class="flex items-center justify-between border-b border-marine-800 pb-2">
+                        <div>
+                            <div id="detailId" class="text-sm font-bold text-white">TGT-01</div>
+                            <div id="detailClass" class="text-xs text-emerald-400">Shipwreck</div>
+                        </div>
+                        <span id="detailPriority" class="px-2.5 py-1 rounded bg-red-950 text-red-400 border border-red-700 font-bold tracking-wider">CRITICAL</span>
+                    </div>
+
+                    <!-- Multi-factor metrics comparison -->
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                        <div class="bg-marine-850 p-2 rounded border border-marine-800">
+                            <span class="text-slate-400 block text-[10px]">DETECTION CONFIDENCE</span>
+                            <span id="detailConfidence" class="text-sm font-bold text-emerald-400">96%</span>
+                        </div>
+                        <div class="bg-marine-850 p-2 rounded border border-marine-800">
+                            <span class="text-slate-400 block text-[10px]">ANOMALY SCORE</span>
+                            <span id="detailAnomalyScore" class="text-sm font-bold text-amber-400">0.18</span>
+                        </div>
+                        <div class="bg-marine-850 p-2 rounded border border-marine-800">
+                            <span class="text-slate-400 block text-[10px]">SHADOW EVIDENCE</span>
+                            <span id="detailShadow" class="text-sm font-bold text-cyan-400">Strong</span>
+                        </div>
+                        <div class="bg-marine-850 p-2 rounded border border-marine-800">
+                            <span class="text-slate-400 block text-[10px]">SEAFLOOR CONTEXT</span>
+                            <span id="detailSeafloor" class="text-sm font-bold text-slate-200">Low similarity</span>
+                        </div>
+                    </div>
+
+                    <!-- Acoustic Physics Reason -->
+                    <div class="bg-marine-950 p-2.5 rounded border border-marine-800">
+                        <span class="text-slate-400 block text-[10px] mb-1 font-semibold text-marine-accent">ACOUSTIC EVIDENCE EXPLANATION:</span>
+                        <p id="detailExplanation" class="text-slate-300 leading-relaxed text-[11px]">
+                            High specular highlight backscatter paired with deep down-range acoustic shadow confirms 3D elevated structure distinct from surrounding seabed sediment.
+                        </p>
+                    </div>
+
+                    <!-- Geo Association -->
+                    <div class="flex items-center justify-between text-[11px] text-slate-400 pt-1">
+                        <span>LAT: <strong id="detailLat" class="text-slate-200">18.9221° N</strong></span>
+                        <span>LON: <strong id="detailLon" class="text-slate-200">72.8349° E</strong></span>
+                        <span>DEPTH: <strong class="text-slate-200">28.4 m</strong></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 2.5: Real-Time Geotagged Sonar Map -->
+            <div class="p-4 border-b border-marine-800 bg-marine-900">
+                <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center space-x-2">
+                        <i data-lucide="map-pin" class="w-4 h-4 text-cyan-400"></i>
+                        <span class="font-mono text-xs font-bold uppercase tracking-wider text-slate-200">Real-Time Geotagged Map</span>
+                    </div>
+                    <span id="mapCoordBadge" class="text-[10px] font-mono text-slate-400">18.9220°N, 72.8347°E</span>
+                </div>
+                <div id="geotagMap" class="h-44 w-full rounded-lg border border-marine-700 bg-black overflow-hidden z-10"></div>
+                <div id="mapUnavailableNotice" class="hidden p-3 bg-marine-950 border border-amber-900/80 rounded text-[11px] text-amber-300 font-mono">Spatial map unavailable — navigation metadata not provided.</div>
+            </div>
+
+            <!-- Section 2.8: Human-in-the-Loop Analyst Review Queue -->
+            <div class="p-4 border-b border-marine-800 bg-marine-850/70">
+                <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center space-x-2">
+                        <i data-lucide="user-check" class="w-4 h-4 text-emerald-400"></i>
+                        <span class="font-mono text-xs font-bold uppercase tracking-wider text-slate-200">Analyst Review Queue</span>
+                    </div>
+                    <span id="reviewStatusBadge" class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">PENDING</span>
+                </div>
+                <div class="space-y-2">
+                    <div class="grid grid-cols-3 gap-1.5">
+                        <button onclick="submitCandidateReview('confirmed')" class="px-2 py-1.5 bg-emerald-900/60 hover:bg-emerald-800 border border-emerald-600 rounded text-[11px] font-mono font-bold text-emerald-300 transition flex items-center justify-center gap-1">
+                            <i data-lucide="check-circle" class="w-3.5 h-3.5"></i> Confirm
+                        </button>
+                        <button onclick="submitCandidateReview('rejected')" class="px-2 py-1.5 bg-red-900/60 hover:bg-red-800 border border-red-600 rounded text-[11px] font-mono font-bold text-red-300 transition flex items-center justify-center gap-1">
+                            <i data-lucide="x-circle" class="w-3.5 h-3.5"></i> Reject
+                        </button>
+                        <button onclick="submitCandidateReview('uncertain')" class="px-2 py-1.5 bg-amber-900/60 hover:bg-amber-800 border border-amber-600 rounded text-[11px] font-mono font-bold text-amber-300 transition flex items-center justify-center gap-1">
+                            <i data-lucide="help-circle" class="w-3.5 h-3.5"></i> Uncertain
+                        </button>
+                    </div>
+                    <input id="analystNotesInput" type="text" placeholder="Analyst notes (e.g., confirmed shadow gradient)" class="w-full bg-marine-950 border border-marine-700 rounded px-2.5 py-1.5 text-xs text-slate-200 font-mono focus:border-marine-accent focus:outline-none"/>
+                </div>
+            </div>
+
+            <!-- Section 3: Google Colab Cloud Training Card -->
+            <div class="p-4 bg-marine-900 border-t border-marine-800">
+                <div class="bg-marine-850 rounded-lg p-3 border border-amber-500/40 space-y-2">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-mono font-bold text-amber-400 flex items-center gap-1.5">
+                            <i data-lucide="cloud-lightning" class="w-4 h-4"></i>
+                            Google Colab Training Bridge
+                        </span>
+                        <span class="text-[10px] bg-amber-950 text-amber-400 border border-amber-700 px-1.5 py-0.5 rounded font-mono">T4 / A100</span>
+                    </div>
+                    <p class="text-[11px] text-slate-300 leading-tight">
+                        Execute full multi-epoch fine-tuning on <strong>AI4Shipwrecks</strong>, <strong>AquaScan</strong>, and <strong>SubPipe</strong> without straining local GPU VRAM.
+                    </p>
+                    <div class="flex items-center justify-between pt-1">
+                        <span class="text-[10px] font-mono text-slate-400">Path: notebooks/USIP_Colab_Model_Training.ipynb</span>
+                        <button onclick="openColabModal()" class="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-black rounded font-mono text-[11px] font-bold transition">
+                            Launch Guide
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </aside>
+    </div>
+
+    <!-- Colab Modal Dialog -->
+    <div id="colabModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-marine-900 border border-amber-500/60 rounded-xl max-w-2xl w-full p-6 shadow-2xl font-mono space-y-4">
+            <div class="flex items-center justify-between border-b border-marine-700 pb-3">
+                <div class="flex items-center space-x-2">
+                    <i data-lucide="cloud" class="w-6 h-6 text-amber-400"></i>
+                    <h3 class="text-base font-bold text-white">Google Colab Cloud GPU Training Bridge</h3>
+                </div>
+                <button onclick="closeColabModal()" class="text-slate-400 hover:text-white">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="text-xs text-slate-300 space-y-3 leading-relaxed">
+                <p>
+                    The complete end-to-end training notebook is ready at:
+                    <br><code class="bg-black/60 px-2 py-1 rounded text-marine-accent border border-marine-700 block mt-1">c:\Users\vuday\OneDrive\Desktop\sih26057\notebooks\USIP_Colab_Model_Training.ipynb</code>
+                </p>
+                <div class="bg-marine-850 p-3 rounded border border-marine-700 space-y-2">
+                    <div class="font-bold text-amber-300">How to run in Google Colab:</div>
+                    <ol class="list-decimal list-inside space-y-1 text-slate-300">
+                        <li>Open <a href="https://colab.research.google.com" target="_blank" class="text-cyan-400 underline">colab.research.google.com</a></li>
+                        <li>Click <strong>Upload</strong> and select <span class="text-white font-semibold">USIP_Colab_Model_Training.ipynb</span></li>
+                        <li>Change runtime type to <strong>GPU (T4 / A100)</strong></li>
+                        <li>Mount Google Drive or connect your local dataset folders directly</li>
+                        <li>Trained model weights will be exported as <span class="text-emerald-400 font-semibold">usip_detector.pt</span></li>
+                    </ol>
+                </div>
+            </div>
+            <div class="flex justify-end space-x-3 pt-2">
+                <button onclick="closeColabModal()" class="px-4 py-2 bg-marine-800 hover:bg-marine-700 text-xs text-white rounded border border-marine-600 transition">
+                    Got it, Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Logic -->
+    <script>
+        let currentAnalysis = null;
+        let selectedDetectionId = null;
+        let rawImage = new Image();
+        let processedImage = new Image();
+        let useRawMode = false;
+        let geoMap = null;
+        let markersLayer = null;
+        let tracklineLayer = null;
+
+        const canvas = document.getElementById('sonarCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function initMap() {
+            if (!geoMap && typeof L !== 'undefined') {
+                geoMap = L.map('geotagMap', { zoomControl: false }).setView([18.9220, 72.8347], 13);
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                    maxZoom: 19
+                }).addTo(geoMap);
+                tracklineLayer = L.layerGroup().addTo(geoMap);
+                markersLayer = L.layerGroup().addTo(geoMap);
+            }
+        }
+
+        async function init() {
+            lucide.createIcons();
+            initMap();
+            // Load initial demonstration shipwreck
+            await loadDemoSample('shipwreck_1');
+        }
+
+        async function loadDemoSample(sampleId) {
+            showLoading(true);
+            try {
+                const formData = new FormData();
+                formData.append('sample_id', sampleId);
+                const resp = await fetch('/api/analyze', {
+                    method: 'POST',
+                    body: formData
+                });
+                if (!resp.ok) throw new Error('Analysis request failed');
+                currentAnalysis = await resp.json();
+                updateUI();
+            } catch (err) {
+                console.error('Error loading sample:', err);
+                alert('Error processing sonar image: ' + err.message);
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function handleFileUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            showLoading(true);
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                const resp = await fetch('/api/analyze', {
+                    method: 'POST',
+                    body: formData
+                });
+                if (!resp.ok) throw new Error('Upload analysis failed');
+                currentAnalysis = await resp.json();
+                updateUI();
+            } catch (err) {
+                console.error('Upload error:', err);
+                alert('Upload error: ' + err.message);
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function showLoading(show) {
+            document.getElementById('loadingOverlay').classList.toggle('hidden', !show);
+        }
+
+        function updateUI() {
+            if (!currentAnalysis) return;
+
+            document.getElementById('imageTitle').innerText = currentAnalysis.filename;
+            document.getElementById('imageDim').innerText = `${currentAnalysis.image_width} x ${currentAnalysis.image_height} px`;
+            document.getElementById('detectionCountBadge').innerText = `${currentAnalysis.detections.length} Targets`;
+
+            // Load images into memory
+            processedImage.src = currentAnalysis.processed_image_url;
+            rawImage.src = currentAnalysis.raw_image_url;
+
+            processedImage.onload = () => {
+                canvas.width = currentAnalysis.image_width;
+                canvas.height = currentAnalysis.image_height;
+                renderCanvas();
+            };
+
+            // Render Target List
+            const targetListEl = document.getElementById('targetList');
+            targetListEl.innerHTML = '';
+
+            currentAnalysis.detections.forEach((det, idx) => {
+                const isKnown = det.category === 'Known Target';
+                const badgeColor = isKnown ? 'text-emerald-400 bg-emerald-950 border-emerald-800' : 'text-amber-400 bg-amber-950 border-amber-800';
+                const priorityBadge = det.priority === 'CRITICAL' ? 'bg-red-950 text-red-400 border-red-800' :
+                                      (det.priority === 'HIGH' ? 'bg-amber-950 text-amber-400 border-amber-800' : 'bg-slate-800 text-slate-400 border-slate-700');
+
+                const item = document.createElement('div');
+                item.className = `p-2 rounded border border-marine-700 bg-marine-850 hover:bg-marine-800 cursor-pointer flex items-center justify-between transition ${selectedDetectionId === det.id ? 'ring-2 ring-marine-accent' : ''}`;
+                item.onclick = () => selectDetection(det.id);
+
+                item.innerHTML = `
+                    <div class="flex items-center space-x-2">
+                        <span class="px-1.5 py-0.5 rounded border text-[10px] font-bold ${badgeColor}">${det.id}</span>
+                        <div>
+                            <div class="text-white font-semibold">${det.class_name}</div>
+                            <div class="text-[10px] text-slate-400">${isKnown ? `Conf: ${Math.round(det.confidence * 100)}%` : `Anomaly: ${det.anomaly_score}`}</div>
+                        </div>
+                    </div>
+                    <span class="px-1.5 py-0.5 rounded border text-[10px] font-bold ${priorityBadge}">${det.priority}</span>
+                `;
+                targetListEl.appendChild(item);
+            });
+
+            // Update Geotagged Map with Sonar Detections and Survey Trackline
+            const mapEl = document.getElementById('geotagMap');
+            const noticeEl = document.getElementById('mapUnavailableNotice');
+            if (currentAnalysis.metadata && currentAnalysis.metadata.available) {
+                mapEl.classList.remove('hidden');
+                noticeEl.classList.add('hidden');
+                if (geoMap) {
+                    const lat = currentAnalysis.metadata.latitude;
+                    const lon = currentAnalysis.metadata.longitude;
+                    document.getElementById('mapCoordBadge').innerText = `${lat.toFixed(4)}°N, ${lon.toFixed(4)}°E`;
+                    
+                    geoMap.setView([lat, lon], 14);
+                    markersLayer.clearLayers();
+                    tracklineLayer.clearLayers();
+
+                    // Survey trackline
+                    const track = [
+                        [lat - 0.008, lon - 0.006],
+                        [lat - 0.004, lon - 0.003],
+                        [lat, lon],
+                        [lat + 0.004, lon + 0.003]
+                    ];
+                    L.polyline(track, { color: '#06b6d4', weight: 2, dashArray: '4, 4' }).addTo(tracklineLayer);
+
+                    // Detection pins
+                    currentAnalysis.detections.forEach((det) => {
+                        const dLat = lat + (det.bbox.y - currentAnalysis.image_height / 2) * 0.000008;
+                        const dLon = lon + (det.bbox.x - currentAnalysis.image_width / 2) * 0.000008;
+                        const isKnown = det.category === 'Known Target';
+                        const markerColor = isKnown ? '#10b981' : '#f59e0b';
+
+                        const circle = L.circleMarker([dLat, dLon], {
+                            radius: 6,
+                            fillColor: markerColor,
+                            color: '#ffffff',
+                            weight: 1.5,
+                            opacity: 1,
+                            fillOpacity: 0.9
+                        }).addTo(markersLayer);
+
+                        circle.bindTooltip(`<b>${det.id}: ${det.class_name}</b><br>Priority: ${det.priority}<br>Lat: ${dLat.toFixed(4)}, Lon: ${dLon.toFixed(4)}`);
+                        circle.on('click', () => selectDetection(det.id));
+                    });
+                }
+            } else {
+                mapEl.classList.add('hidden');
+                noticeEl.classList.remove('hidden');
+                document.getElementById('mapCoordBadge').innerText = 'METADATA UNAVAILABLE';
+            }
+
+            // Select first target by default
+            if (currentAnalysis.detections.length > 0) {
+                selectDetection(currentAnalysis.detections[0].id);
+            }
+            lucide.createIcons();
+        }
+
+        function selectDetection(detId) {
+            selectedDetectionId = detId;
+            const det = currentAnalysis.detections.find(d => d.id === detId);
+            if (!det) return;
+
+            document.getElementById('detailId').innerText = det.id;
+            document.getElementById('detailClass').innerText = det.class_name;
+            document.getElementById('detailPriority').innerText = det.priority;
+            document.getElementById('detailConfidence').innerText = `${Math.round(det.confidence * 100)}%`;
+            document.getElementById('detailAnomalyScore').innerText = det.anomaly_score !== null ? det.anomaly_score : 'N/A';
+            document.getElementById('detailShadow').innerText = det.acoustic_metrics.shadow_evidence_level;
+            document.getElementById('detailSeafloor').innerText = det.acoustic_metrics.seafloor_similarity;
+            document.getElementById('detailExplanation').innerText = det.explanation;
+
+            document.getElementById('detailLat').innerText = `${currentAnalysis.metadata.latitude.toFixed(4)}° N`;
+            document.getElementById('detailLon').innerText = `${currentAnalysis.metadata.longitude.toFixed(4)}° E`;
+
+            renderCanvas();
+        }
+
+        function renderCanvas() {
+            if (!currentAnalysis) return;
+
+            const showKnown = document.getElementById('toggleKnown').checked;
+            const showAnomaly = document.getElementById('toggleAnomaly').checked;
+
+            const imgToDraw = useRawMode ? rawImage : processedImage;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(imgToDraw, 0, 0, canvas.width, canvas.height);
+
+            // Draw bounding boxes & markers
+            currentAnalysis.detections.forEach(det => {
+                const isKnown = det.category === 'Known Target';
+                if (isKnown && !showKnown) return;
+                if (!isKnown && !showAnomaly) return;
+
+                const isSelected = det.id === selectedDetectionId;
+                const bx = det.bbox.x;
+                const by = det.bbox.y;
+                const bw = det.bbox.width;
+                const bh = det.bbox.height;
+
+                ctx.lineWidth = isSelected ? 4 : 2;
+                ctx.strokeStyle = isKnown ? '#10b981' : '#f59e0b';
+
+                // Bounding Box
+                ctx.strokeRect(bx, by, bw, bh);
+
+                // Highlight selected
+                if (isSelected) {
+                    ctx.fillStyle = isKnown ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)';
+                    ctx.fillRect(bx, by, bw, bh);
+                }
+
+                // Banner Label
+                const label = isKnown ? `${det.class_name} [${Math.round(det.confidence * 100)}%]` : `ANOMALY [Score: ${det.anomaly_score}]`;
+                ctx.font = 'bold 16px monospace';
+                const textWidth = ctx.measureText(label).width;
+
+                ctx.fillStyle = isKnown ? '#10b981' : '#f59e0b';
+                ctx.fillRect(bx, Math.max(0, by - 24), textWidth + 12, 24);
+
+                ctx.fillStyle = '#000000';
+                ctx.fillText(label, bx + 6, Math.max(16, by - 6));
+            });
+        }
+
+        function toggleRawMode() {
+            useRawMode = document.getElementById('toggleRaw').checked;
+            renderCanvas();
+        }
+
+        function resetZoom() {
+            renderCanvas();
+        }
+
+        async function submitCandidateReview(status) {
+            if (!selectedDetectionId || !currentAnalysis) return;
+            const notes = document.getElementById('analystNotesInput').value;
+            try {
+                const resp = await fetch('/api/v1/reviews', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        candidate_id: selectedDetectionId,
+                        analyst_id: 'ANALYST-01',
+                        review_status: status,
+                        notes: notes || `Reviewed as ${status}`
+                    })
+                });
+                if (resp.ok) {
+                    const badge = document.getElementById('reviewStatusBadge');
+                    badge.innerText = status.toUpperCase();
+                    if (status === 'confirmed') badge.className = 'text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-700 font-bold';
+                    else if (status === 'rejected') badge.className = 'text-[10px] font-mono px-2 py-0.5 rounded bg-red-950 text-red-400 border border-red-700 font-bold';
+                    else badge.className = 'text-[10px] font-mono px-2 py-0.5 rounded bg-amber-950 text-amber-400 border border-amber-700 font-bold';
+                }
+            } catch (e) {
+                console.error('Review error:', e);
+            }
+        }
+
+        function exportReport(format) {
+            if (!currentAnalysis) {
+                alert('Run an analysis first.');
+                return;
+            }
+            const analysisId = currentAnalysis.summary.analysis_id || currentAnalysis.summary.survey_id;
+            window.location.href = `/api/v1/reports/${analysisId}/${format}`;
+        }
+
+        function openColabModal() {
+            document.getElementById('colabModal').classList.remove('hidden');
+        }
+
+        function closeColabModal() {
+            document.getElementById('colabModal').classList.add('hidden');
+        }
+
+        // Crosshair coordinates tracker
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const x = Math.round((e.clientX - rect.left) * scaleX);
+            const y = Math.round((e.clientY - rect.top) * scaleY);
+            document.getElementById('crosshairCoord').innerText = `Cursor: X: ${x} | Y: ${y}`;
+        });
+
+        window.onload = init;
+    </script>
+</body>
+</html>

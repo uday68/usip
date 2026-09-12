@@ -1,0 +1,11 @@
+{
+  "dataset": "sss_ssl_dataset_N713_384 (Unlabelled SSS Sonar)",
+  "training_samples_count": 295,
+  "feature_dimensions": 7,
+  "clusters_count": 5,
+  "mean_cluster_distance": 0.0579,
+  "std_cluster_distance": 0.0524,
+  "p50_distance": 0.0448,
+  "p95_distance": 0.1473,
+  "max_distance": 0.4667
+}

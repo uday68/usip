@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: usip-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - DATABASE_URL=postgresql://usip_user:sonar_secure_pass@db:5432/usip_db
+      - DEVICE=cpu
+    depends_on:
+      - db
+    volumes:
+      - ./backend:/app/backend
+      - ./demo_samples:/app/demo_samples
+      - ./reports:/app/reports
+
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: usip-postgis-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: usip_db
+      POSTGRES_USER: usip_user
+      POSTGRES_PASSWORD: sonar_secure_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
+

@@ -1,0 +1,24 @@
+{
+    "dataset": "USIP Unified Sonar Dataset",
+    "model_architecture": "YOLOv8n (Decoupled Head, Anchor-Free)",
+    "epochs_trained": 10,
+    "batch_size": 4,
+    "image_size": 640,
+    "device": "0",
+    "classes": [
+        "Shipwreck",
+        "Pipeline",
+        "Debris"
+    ],
+    "metrics": {
+        "mAP50": 0.1316243696090161,
+        "mAP50_95": 0.04254016492009601,
+        "precision": 0.17834682497192111,
+        "recall": 0.24432514612212367
+    },
+    "per_class_mAP50": {
+        "Shipwreck": 0.11345924779589397,
+        "Pipeline": 0.015592991913746631,
+        "Debris": 0.2658208691174077
+    }
+}

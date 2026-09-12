@@ -1,0 +1,25 @@
+{
+    "source_image": "sample_shipwreck_1.png",
+    "image_dimensions": [
+        1728,
+        1904
+    ],
+    "quality_metrics": {
+        "is_valid": true,
+        "mean_intensity": 47.01,
+        "std_intensity": 42.65,
+        "dynamic_range": 200.0,
+        "dead_ratio": 0.2151,
+        "saturation_ratio": 0.0034,
+        "estimated_snr_db": 0.85,
+        "warnings": []
+    },
+    "metadata": {
+        "latitude": null,
+        "longitude": null,
+        "available": false,
+        "status_note": "Geolocation unavailable \u2014 no valid navigation metadata associated with candidate."
+    },
+    "total_candidates": 0,
+    "candidates": []
+}

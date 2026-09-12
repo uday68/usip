@@ -1,0 +1,25 @@
+{
+    "source_image": "debris_00d9b175-Screenshot_2025-08-28_23.37.15.png",
+    "image_dimensions": [
+        640,
+        640
+    ],
+    "quality_metrics": {
+        "is_valid": true,
+        "mean_intensity": 65.13,
+        "std_intensity": 39.11,
+        "dynamic_range": 183.0,
+        "dead_ratio": 0.0149,
+        "saturation_ratio": 0.0015,
+        "estimated_snr_db": 4.43,
+        "warnings": []
+    },
+    "metadata": {
+        "latitude": null,
+        "longitude": null,
+        "available": false,
+        "status_note": "Geolocation unavailable \u2014 no valid navigation metadata associated with candidate."
+    },
+    "total_candidates": 0,
+    "candidates": []
+}
