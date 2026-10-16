@@ -154,7 +154,10 @@ async def analyze_compatibility(
             "total_detections": res["total_candidates"],
             "high_priority": res["high_priority_count"],
             "latency_ms": res["inference_latency_ms"],
-            "device": res["device_used"]
+            "device": res["device_used"],
+            "model_status": res.get("model_status", "CUSTOM_TRAINED"),
+            "is_custom_trained": res.get("is_custom_trained", True),
+            "model_weights_path": res.get("model_weights_path", "")
         }
     }
 

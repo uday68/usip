@@ -56,7 +56,8 @@ def run_evaluation_verification(
         plots=True,
         project="reports",
         name="evaluation_verification",
-        exist_ok=True
+        exist_ok=True,
+        workers=0
     )
 
     class_names = ["Shipwreck", "Pipeline", "Debris"]
@@ -74,9 +75,15 @@ def run_evaluation_verification(
         except Exception as e:
             per_class_results[name] = {"error": str(e)}
 
+    def to_portable_str(p: Path) -> str:
+        try:
+            return str(p.resolve().relative_to(PROJECT_ROOT.resolve())).replace("\\", "/")
+        except Exception:
+            return str(p).replace("\\", "/")
+
     verification_data = {
-        "weights_path": str(weights_path),
-        "dataset_yaml": str(dataset_yaml),
+        "weights_path": to_portable_str(weights_path),
+        "dataset_yaml": to_portable_str(dataset_yaml),
         "split_evaluated": split,
         "image_size": imgsz,
         "batch_size": batch_size,

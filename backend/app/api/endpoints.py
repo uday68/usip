@@ -42,7 +42,10 @@ def health_check(db: Session = Depends(get_db)):
         gpu_device=gpu_name,
         detector_model_loaded=detector_loaded,
         anomaly_engine_loaded=anomaly_loaded,
-        database_connected=db_ok
+        database_connected=db_ok,
+        model_status=inference_service.model_status or "UNKNOWN",
+        is_custom_trained=inference_service.is_custom_trained,
+        model_weights_path=inference_service.model_weights_path
     )
 
 @router.post("/inference", response_model=InferenceResponseSchema)

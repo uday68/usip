@@ -58,6 +58,9 @@ class InferenceResponseSchema(BaseModel):
     candidates: List[CandidateOutSchema]
     inference_latency_ms: float
     device_used: str
+    model_status: str = "CUSTOM_TRAINED"
+    is_custom_trained: bool = True
+    model_weights_path: Optional[str] = None
 
 class SurveySummarySchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -77,4 +80,7 @@ class HealthResponseSchema(BaseModel):
     detector_model_loaded: bool
     anomaly_engine_loaded: bool
     database_connected: bool
+    model_status: str
+    is_custom_trained: bool
+    model_weights_path: Optional[str] = None
 

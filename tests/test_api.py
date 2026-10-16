@@ -14,6 +14,9 @@ def test_api_health():
     assert data["status"] == "HEALTHY"
     assert "gpu_available" in data
     assert "detector_model_loaded" in data
+    assert "model_status" in data
+    assert "is_custom_trained" in data
+    assert data["model_status"] in ["CUSTOM_TRAINED", "EXPERIMENT_CHECKPOINT", "DEMO_FALLBACK_BASE"]
 
 def test_demo_samples_list():
     response = client.get("/api/v1/demo/samples")
@@ -40,4 +43,7 @@ def test_inference_synthetic_upload():
     assert "candidates" in data
     assert "quality_metrics" in data
     assert "inference_latency_ms" in data
+    assert "model_status" in data
+    assert "is_custom_trained" in data
+    assert "model_weights_path" in data
 

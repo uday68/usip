@@ -7,12 +7,27 @@ import numpy as np
 import yaml
 from pathlib import Path
 from PIL import Image
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
+from configs.settings import config, BASE_DIR
 from ml.preprocessing.pipeline import SonarPreprocessingPipeline
 from ml.preprocessing.tiling import SonarTiler
 
-# Output unified directory on D: drive to protect C: drive space
-OUTPUT_DATASET_DIR = Path("D:/USIP_DATA/unified_sonar_dataset")
+# Output unified directory resolved portably from config (local or external storage)
+OUTPUT_DATASET_DIR = config.dataset_root
+
+def _find_zip_file(zip_filename: str) -> Optional[Path]:
+    """Search for source raw zip archive across configured and standard fallback paths."""
+    candidates = [
+        config.raw_datasets_dir / zip_filename,
+        BASE_DIR / zip_filename,
+        Path(f"D:/{zip_filename}"),
+        Path.home() / "USIP_DATA" / zip_filename,
+        Path(f"/data/{zip_filename}")
+    ]
+    for c in candidates:
+        if c.exists():
+            return c
+    return None
 
 AI4_TRAIN_SITES = [
     'DM_Wilson', 'DR_Hanna', 'EB_Allen', 'Egyptian', 
@@ -66,9 +81,9 @@ def setup_dirs():
 
 def compile_shipwrecks():
     print("Compiling AI4Shipwrecks with strict site-disjoint partitioning...")
-    zip_path = Path("D:/AI4Shipwrecks.zip")
-    if not zip_path.exists():
-        print(f"Warning: {zip_path} not found.")
+    zip_path = _find_zip_file("AI4Shipwrecks.zip")
+    if not zip_path or not zip_path.exists():
+        print("Warning: AI4Shipwrecks.zip not found in configured or fallback locations.")
         return 0
 
     tiler = SonarTiler(tile_size=640, overlap_ratio=0.15)
@@ -142,9 +157,9 @@ def compile_shipwrecks():
 
 def compile_aquascan():
     print("Compiling AquaScan-1K with date-disjoint partitioning...")
-    zip_path = Path("D:/AquaScan-1K.zip")
-    if not zip_path.exists():
-        print(f"Warning: {zip_path} not found.")
+    zip_path = _find_zip_file("AquaScan-1K.zip")
+    if not zip_path or not zip_path.exists():
+        print("Warning: AquaScan-1K.zip not found in configured or fallback locations.")
         return 0
 
     seen_hashes = set()
@@ -208,9 +223,9 @@ def compile_aquascan():
 
 def compile_subpipe():
     print("Compiling SubPipeMini with chronological sequence-disjoint partitioning...")
-    zip_path = Path("D:/SubPipeMini.zip")
-    if not zip_path.exists():
-        print(f"Warning: {zip_path} not found.")
+    zip_path = _find_zip_file("SubPipeMini.zip")
+    if not zip_path or not zip_path.exists():
+        print("Warning: SubPipeMini.zip not found in configured or fallback locations.")
         return 0
 
     counts = {"train": 0, "val": 0, "test": 0}

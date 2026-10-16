@@ -21,6 +21,10 @@ from configs.settings import config
 STATIC_RESULTS_DIR = Path("backend/static/results")
 STATIC_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
+MODEL_STATUS_CUSTOM = "CUSTOM_TRAINED"
+MODEL_STATUS_CHECKPOINT = "EXPERIMENT_CHECKPOINT"
+MODEL_STATUS_FALLBACK = "DEMO_FALLBACK_BASE"
+
 class InferenceService:
     def __init__(self):
         self.device = "0" if torch.cuda.is_available() else "cpu"
@@ -29,8 +33,11 @@ class InferenceService:
         self.anomaly_engine = AnomalyDiscoveryEngine()
         self.metadata_engine = MetadataIngestionEngine()
 
-        # Initialize detector model
+        # Initialize detector model & explicit loading provenance
         self.model = None
+        self.model_status = None
+        self.is_custom_trained = False
+        self.model_weights_path = ""
         self._load_detector()
 
         # If anomaly engine not yet fitted, fit on SSL sample
@@ -41,18 +48,37 @@ class InferenceService:
 
     def _load_detector(self):
         weights_path = Path(config.model_path)
+        exp_weights = Path("experiments/usip_sonar_detector/weights/best.pt")
+
         if weights_path.exists():
             print(f"Loading trained USIP detector from {weights_path}...")
             self.model = YOLO(str(weights_path))
+            self.model_status = MODEL_STATUS_CUSTOM
+            self.is_custom_trained = True
+            self.model_weights_path = str(weights_path)
+        elif exp_weights.exists():
+            print(f"Loading checkpoint detector from {exp_weights}...")
+            self.model = YOLO(str(exp_weights))
+            self.model_status = MODEL_STATUS_CHECKPOINT
+            self.is_custom_trained = True
+            self.model_weights_path = str(exp_weights)
         else:
-            # Check experiment checkpoint
-            exp_weights = Path("experiments/usip_sonar_detector/weights/best.pt")
-            if exp_weights.exists():
-                print(f"Loading checkpoint detector from {exp_weights}...")
-                self.model = YOLO(str(exp_weights))
-            else:
-                print("Trained weights not found yet. Using base model until training completes...")
-                self.model = YOLO("yolov8n.pt")
+            if config.strict_model:
+                raise FileNotFoundError(
+                    f"CRITICAL: Custom trained USIP detector weights not found at {weights_path} "
+                    f"or {exp_weights}, and STRICT_MODEL is active."
+                )
+            import warnings
+            warnings.warn(
+                "WARNING: USIP custom-trained sonar weights not found. "
+                "Running in DEMO_FALLBACK_BASE mode with generic yolov8n.pt.",
+                UserWarning
+            )
+            print("WARNING: Trained weights not found yet. Using generic yolov8n.pt base model for demo fallback...")
+            self.model = YOLO("yolov8n.pt")
+            self.model_status = MODEL_STATUS_FALLBACK
+            self.is_custom_trained = False
+            self.model_weights_path = "yolov8n.pt"
 
     def run_inference(
         self, 
@@ -342,7 +368,10 @@ class InferenceService:
             "unknown_anomalies_count": sum(1 for c in cand_out_list if c["source"] == "anomaly"),
             "candidates": cand_out_list,
             "inference_latency_ms": round(latency_ms, 2),
-            "device_used": f"CUDA ({torch.cuda.get_device_name(0)})" if self.device != "cpu" else "CPU"
+            "device_used": f"CUDA ({torch.cuda.get_device_name(0)})" if self.device != "cpu" else "CPU",
+            "model_status": self.model_status,
+            "is_custom_trained": self.is_custom_trained,
+            "model_weights_path": self.model_weights_path
         }
 
 # Global singleton

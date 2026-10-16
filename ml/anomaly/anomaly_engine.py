@@ -86,7 +86,9 @@ class AnomalyDiscoveryEngine:
             reg_covar=1e-3, 
             random_state=config.seed
         )
-        self.max_normal_dist = 3.5  # calibrated 95th percentile normal distance
+        self.max_normal_dist = 7.5  # calibrated 95th percentile Mahalanobis distance
+        self.max_normal_nll = 25.0  # calibrated 95th percentile Negative Log-Likelihood
+        self.min_normal_nll = 5.0   # calibrated minimum NLL on training seabed
         self.inv_cov = None        # Tied inverse covariance for Mahalanobis metric
         self.is_fitted = False
 
@@ -105,15 +107,18 @@ class AnomalyDiscoveryEngine:
 
                 with open(STATS_FILE, "r") as f:
                     stats = json.load(f)
-                    self.max_normal_dist = float(stats.get("max_normal_dist", 3.5))
+                    self.max_normal_dist = float(stats.get("max_normal_dist", 7.5))
+                    self.max_normal_nll = float(stats.get("max_normal_nll", 25.0))
+                    self.min_normal_nll = float(stats.get("min_normal_nll", 5.0))
                 self.is_fitted = True
-                print("Loaded pre-trained acoustic seabed anomaly model (Covariance-Aware GMM & KMeans).")
+                print("Loaded pre-trained acoustic seabed anomaly model (Tied-Covariance GMM & NLL Engine).")
             except Exception as e:
                 print(f"Error loading anomaly model: {e}. Will fit on available SSL sample.")
 
     def fit_from_normal_seabed(self, ssl_dir: Optional[Path] = None):
         """
-        Fits baseline clusters using unlabelled normal seabed tiles from sss_ssl_dataset_N713_384.
+        Fits baseline density and clusters using unlabelled normal seabed tiles from sss_ssl_dataset_N713_384.
+        Calibrates both exact GMM Negative Log-Likelihood (NLL) and Mahalanobis distance thresholds.
         """
         if ssl_dir is None:
             ssl_dir = config.ssl_sample_dir
@@ -146,17 +151,23 @@ class AnomalyDiscoveryEngine:
         X = np.array(features)
         X_scaled = self.scaler.fit_transform(X)
 
-        # 1. Fit KMeans for fast centroid lookups
+        # 1. Fit KMeans for auxiliary partition reference
         self.kmeans.fit(X_scaled)
 
-        # 2. Fit Tied-Covariance GMM for Mahalanobis acoustic metric
+        # 2. Fit Tied-Covariance GMM for true probabilistic density and Mahalanobis metric
         self.gmm.fit(X_scaled)
         self.inv_cov = self.gmm.precisions_[0] if self.gmm.precisions_.ndim == 3 else self.gmm.precisions_
 
-        # Calculate Mahalanobis distances to nearest cluster center on normal training set
+        # Calculate exact GMM Negative Log-Likelihood across normal training samples
+        train_log_probs = self.gmm.score_samples(X_scaled)
+        train_nlls = -train_log_probs
+        self.max_normal_nll = float(np.percentile(train_nlls, 95.0))
+        self.min_normal_nll = float(np.min(train_nlls))
+
+        # Calculate Mahalanobis distances to nearest GMM component mean on normal training set
         distances = []
         for x in X_scaled:
-            diffs = self.kmeans.cluster_centers_ - x[np.newaxis, :]  # (K, D)
+            diffs = self.gmm.means_ - x[np.newaxis, :]  # (K, D)
             # Mahalanobis: sqrt(diff * inv_cov * diff.T)
             maha_dists = np.sqrt(np.sum((diffs @ self.inv_cov) * diffs, axis=1))
             distances.append(np.min(maha_dists))
@@ -176,26 +187,39 @@ class AnomalyDiscoveryEngine:
                 "covariance_model": "GMM_tied",
                 "max_normal_dist": self.max_normal_dist,
                 "mean_dist": float(np.mean(distances)),
-                "std_dist": float(np.std(distances))
+                "std_dist": float(np.std(distances)),
+                "max_normal_nll": self.max_normal_nll,
+                "min_normal_nll": self.min_normal_nll,
+                "mean_nll": float(np.mean(train_nlls))
             }, f, indent=4)
 
         self.is_fitted = True
-        print(f"Anomaly engine fitted successfully on {len(features)} acoustic patches. Calibrated Threshold: {self.max_normal_dist:.3f}")
+        print(
+            f"Anomaly engine fitted on {len(features)} acoustic patches.\n"
+            f"  - Mahalanobis 95th Percentile Threshold : {self.max_normal_dist:.3f}\n"
+            f"  - Negative Log-Likelihood 95th Threshold: {self.max_normal_nll:.3f}"
+        )
 
     def score_patch(self, crop_gray: np.ndarray) -> Dict[str, Any]:
         """
-        Evaluate a candidate crop against normal seabed distribution:
+        Evaluate a candidate crop against normal seabed distribution using:
+        1. Exact GMM Negative Log-Likelihood (NLL = -log p(x))
+        2. Component-wise Mahalanobis Novelty Distance to GMM means
         Outputs:
-        - anomaly_score: [0.0, 1.0]
-        - nearest_cluster_id
-        - nearest_cluster_dist (Mahalanobis novelty distance)
-        - is_anomaly
-        - explanation
+        - anomaly_score: [0.0, 1.0] (composite probabilistic novelty index)
+        - negative_log_likelihood: float (exact GMM density deficit)
+        - mahalanobis_dist: float (exact covariance-scaled novelty distance)
+        - nearest_cluster_id: int (index of closest GMM component)
+        - nearest_cluster_dist: float (Mahalanobis distance to closest GMM component)
+        - is_anomaly: bool (true if novelty exceeds 95th percentile baseline)
+        - explanation: str (human-readable acoustic explanation)
         """
         if not self.is_fitted:
             # Fallback heuristic if models not yet fit
             return {
                 "anomaly_score": 0.15,
+                "negative_log_likelihood": 10.0,
+                "mahalanobis_dist": 1.0,
                 "nearest_cluster_id": 0,
                 "nearest_cluster_dist": 1.0,
                 "is_anomaly": False,
@@ -205,33 +229,49 @@ class AnomalyDiscoveryEngine:
         feat = extract_acoustic_features(crop_gray).reshape(1, -1)
         feat_scaled = self.scaler.transform(feat)
 
+        # 1. Exact GMM Negative Log-Likelihood
+        log_prob = float(self.gmm.score_samples(feat_scaled)[0])
+        nll = -log_prob
+
+        # 2. Mahalanobis distance to nearest GMM component mean
         if self.inv_cov is not None:
-            # Mahalanobis distance to each cluster center
-            diffs = self.kmeans.cluster_centers_ - feat_scaled  # (K, D)
+            diffs = self.gmm.means_ - feat_scaled  # (K, D)
             maha_dists = np.sqrt(np.sum((diffs @ self.inv_cov) * diffs, axis=1))
             nearest_cluster_id = int(np.argmin(maha_dists))
             min_dist = float(maha_dists[nearest_cluster_id])
         else:
-            # Fallback Euclidean distance
+            # Fallback Euclidean distance to KMeans centroids
             dists = self.kmeans.transform(feat_scaled)[0]
             nearest_cluster_id = int(np.argmin(dists))
             min_dist = float(dists[nearest_cluster_id])
 
-        # Normalized anomaly score: 0 (matches normal centroid) to 1.0 (novel acoustic signature)
-        normalized_score = min(1.0, min_dist / (self.max_normal_dist * 1.8))
+        # Dual-threshold anomaly evaluation
+        maha_anomaly = min_dist > self.max_normal_dist
+        nll_anomaly = nll > self.max_normal_nll
+        is_anomaly = maha_anomaly or nll_anomaly
 
-        is_anomaly = min_dist > self.max_normal_dist
+        # Composite normalized anomaly score: [0.0, 1.0]
+        score_maha = min(1.0, min_dist / (self.max_normal_dist * 1.8))
+        score_nll = min(1.0, max(0.0, (nll - self.min_normal_nll) / (max(self.max_normal_nll - self.min_normal_nll, 1e-4) * 1.5)))
+        normalized_score = float(np.clip(0.5 * score_maha + 0.5 * score_nll, 0.0, 1.0))
+
         if is_anomaly:
             explanation = (
-                f"Acoustic texture departs significantly from normal sediment clusters "
-                f"(Mahalanobis Distance: {min_dist:.2f} > baseline {self.max_normal_dist:.2f}). "
-                f"Candidate requiring expert review."
+                f"Acoustic texture departs significantly from normal sediment distribution "
+                f"(Mahalanobis Distance: {min_dist:.2f} > baseline {self.max_normal_dist:.2f}, "
+                f"Negative Log-Likelihood: {nll:.2f} > baseline {self.max_normal_nll:.2f}). "
+                f"Unmodeled seafloor candidate requiring expert review."
             )
         else:
-            explanation = f"Consistent with natural acoustic seafloor facies (Cluster #{nearest_cluster_id})."
+            explanation = (
+                f"Consistent with natural acoustic seafloor facies "
+                f"(GMM Component #{nearest_cluster_id}, D_M: {min_dist:.2f}, NLL: {nll:.2f})."
+            )
 
         return {
             "anomaly_score": round(normalized_score, 4),
+            "negative_log_likelihood": round(nll, 4),
+            "mahalanobis_dist": round(min_dist, 4),
             "nearest_cluster_id": nearest_cluster_id,
             "nearest_cluster_dist": round(min_dist, 4),
             "is_anomaly": is_anomaly,

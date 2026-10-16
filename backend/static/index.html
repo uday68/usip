@@ -80,6 +80,10 @@
                     <span class="text-xs bg-emerald-950 text-emerald-400 px-2 py-0.5 rounded font-mono border border-emerald-700 flex items-center gap-1">
                         <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> SYSTEM READY
                     </span>
+                    <span id="modelStatusBadge" class="text-xs bg-emerald-950 text-emerald-400 px-2 py-0.5 rounded font-mono border border-emerald-700 flex items-center gap-1">
+                        <span id="modelStatusDot" class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                        <span id="modelStatusText">USIP Model: Custom Sonar (best.pt)</span>
+                    </span>
                 </div>
                 <div class="text-xs text-slate-400 font-mono tracking-tight">Underwater Sonar Intelligence Platform • Side-Scan Sonar Target & Anomaly Discovery</div>
             </div>
@@ -162,7 +166,7 @@
         <label class="px-3.5 py-1.5 bg-marine-700 hover:bg-marine-600 text-white rounded-md font-mono flex items-center space-x-1.5 cursor-pointer transition border border-marine-500 flex-shrink-0 shadow">
             <i data-lucide="upload" class="w-4 h-4 text-cyan-400"></i>
             <span class="font-bold">Upload Sonar File</span>
-            <input type="file" id="fileInput" accept="image/*" class="hidden" onchange="handleFileUpload(event)">
+            <input type="file" id="fileInput" accept="image/*,.tiff,.tif,.pbm,.png,.jpg,.jpeg" class="hidden" onchange="handleFileUpload(event)">
         </label>
     </div>
 
@@ -421,9 +425,37 @@
             }
         }
 
+        async function checkSystemHealth() {
+            try {
+                const resp = await fetch('/api/v1/health');
+                if (resp.ok) {
+                    const data = await resp.json();
+                    const badge = document.getElementById('modelStatusBadge');
+                    const text = document.getElementById('modelStatusText');
+                    const dot = document.getElementById('modelStatusDot');
+                    if (data.is_custom_trained) {
+                        badge.className = 'text-xs bg-emerald-950 text-emerald-400 px-2 py-0.5 rounded font-mono border border-emerald-700 flex items-center gap-1';
+                        dot.className = 'w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse';
+                        const fileName = data.model_weights_path ? data.model_weights_path.split(/[\\/]/).pop() : 'best.pt';
+                        text.innerText = `USIP Model: ${data.model_status} (${fileName})`;
+                    } else {
+                        badge.className = 'text-xs bg-amber-950 text-amber-400 px-2 py-0.5 rounded font-mono border border-amber-700 flex items-center gap-1';
+                        dot.className = 'w-1.5 h-1.5 rounded-full bg-amber-400';
+                        text.innerText = 'USIP Model: DEMO FALLBACK (Base YOLO)';
+                    }
+                    if (data.gpu_device) {
+                        document.getElementById('gpuStatus').innerText = data.gpu_device;
+                    }
+                }
+            } catch (e) {
+                console.warn('Health check error:', e);
+            }
+        }
+
         async function init() {
             lucide.createIcons();
             initMap();
+            await checkSystemHealth();
             // Load initial demonstration shipwreck (Montana)
             await loadDemoSample('montana');
         }
@@ -499,32 +531,75 @@
             processedImage.src = currentAnalysis.processed_image_url;
             rawImage.src = currentAnalysis.raw_image_url;
 
+            // Synchronize model badge with inference summary if present
+            if (currentAnalysis.summary && currentAnalysis.summary.model_status) {
+                const badge = document.getElementById('modelStatusBadge');
+                const text = document.getElementById('modelStatusText');
+                const dot = document.getElementById('modelStatusDot');
+                if (currentAnalysis.summary.is_custom_trained) {
+                    badge.className = 'text-xs bg-emerald-950 text-emerald-400 px-2 py-0.5 rounded font-mono border border-emerald-700 flex items-center gap-1';
+                    dot.className = 'w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse';
+                    const fileName = currentAnalysis.summary.model_weights_path ? currentAnalysis.summary.model_weights_path.split(/[\\/]/).pop() : 'best.pt';
+                    text.innerText = `USIP Model: ${currentAnalysis.summary.model_status} (${fileName})`;
+                } else {
+                    badge.className = 'text-xs bg-amber-950 text-amber-400 px-2 py-0.5 rounded font-mono border border-amber-700 flex items-center gap-1';
+                    dot.className = 'w-1.5 h-1.5 rounded-full bg-amber-400';
+                    text.innerText = 'USIP Model: DEMO FALLBACK (Base YOLO)';
+                }
+            }
+
             // Render Target List
             const targetListEl = document.getElementById('targetList');
             targetListEl.innerHTML = '';
 
-            currentAnalysis.detections.forEach((det, idx) => {
-                const isKnown = det.category === 'Known Target';
-                const badgeColor = isKnown ? 'text-emerald-400 bg-emerald-950 border-emerald-800' : 'text-amber-400 bg-amber-950 border-amber-800';
-                const priorityBadge = det.priority === 'CRITICAL' ? 'bg-red-950 text-red-400 border-red-800' :
-                                      (det.priority === 'HIGH' ? 'bg-amber-950 text-amber-400 border-amber-800' : 'bg-slate-800 text-slate-400 border-slate-700');
-
-                const item = document.createElement('div');
-                item.className = `p-2 rounded border border-marine-700 bg-marine-850 hover:bg-marine-800 cursor-pointer flex items-center justify-between transition ${selectedDetectionId === det.id ? 'ring-2 ring-marine-accent' : ''}`;
-                item.onclick = () => selectDetection(det.id);
-
-                item.innerHTML = `
-                    <div class="flex items-center space-x-2">
-                        <span class="px-1.5 py-0.5 rounded border text-[10px] font-bold ${badgeColor}">${det.id}</span>
-                        <div>
-                            <div class="text-white font-semibold">${det.class_name}</div>
-                            <div class="text-[10px] text-slate-400">${isKnown ? `Conf: ${Math.round(det.confidence * 100)}%` : `Anomaly: ${det.anomaly_score}`}</div>
-                        </div>
+            if (currentAnalysis.detections.length === 0) {
+                targetListEl.innerHTML = `
+                    <div class="p-4 text-center text-xs font-mono text-slate-400 border border-marine-700/60 rounded bg-marine-900/60">
+                        <i data-lucide="shield-check" class="w-6 h-6 text-emerald-400 mx-auto mb-2"></i>
+                        <div class="text-white font-semibold">Nominal Seabed Survey</div>
+                        <div class="text-[11px] text-slate-400 mt-1">No discrete man-made targets or acoustic anomalies detected above sensitivity threshold.</div>
                     </div>
-                    <span class="px-1.5 py-0.5 rounded border text-[10px] font-bold ${priorityBadge}">${det.priority}</span>
                 `;
-                targetListEl.appendChild(item);
-            });
+                selectedDetectionId = null;
+                document.getElementById('detailId').innerText = 'NONE';
+                document.getElementById('detailClass').innerText = 'Nominal Seabed';
+                document.getElementById('detailPriority').innerText = 'NOMINAL';
+                document.getElementById('detailConfidence').innerText = 'N/A';
+                document.getElementById('detailAnomalyScore').innerText = '0.00';
+                document.getElementById('detailShadow').innerText = 'None';
+                document.getElementById('detailSeafloor').innerText = '100%';
+                document.getElementById('detailExplanation').innerText = 'Acoustic backscatter signature and speckle texture match normal seabed training distribution.';
+                if (currentAnalysis.metadata && currentAnalysis.metadata.available) {
+                    document.getElementById('detailLat').innerText = `${currentAnalysis.metadata.latitude.toFixed(4)}° N`;
+                    document.getElementById('detailLon').innerText = `${currentAnalysis.metadata.longitude.toFixed(4)}° E`;
+                } else {
+                    document.getElementById('detailLat').innerText = 'N/A';
+                    document.getElementById('detailLon').innerText = 'N/A';
+                }
+            } else {
+                currentAnalysis.detections.forEach((det, idx) => {
+                    const isKnown = det.category === 'Known Target';
+                    const badgeColor = isKnown ? 'text-emerald-400 bg-emerald-950 border-emerald-800' : 'text-amber-400 bg-amber-950 border-amber-800';
+                    const priorityBadge = det.priority === 'CRITICAL' ? 'bg-red-950 text-red-400 border-red-800' :
+                                          (det.priority === 'HIGH' ? 'bg-amber-950 text-amber-400 border-amber-800' : 'bg-slate-800 text-slate-400 border-slate-700');
+
+                    const item = document.createElement('div');
+                    item.className = `p-2 rounded border border-marine-700 bg-marine-850 hover:bg-marine-800 cursor-pointer flex items-center justify-between transition ${selectedDetectionId === det.id ? 'ring-2 ring-marine-accent' : ''}`;
+                    item.onclick = () => selectDetection(det.id);
+
+                    item.innerHTML = `
+                        <div class="flex items-center space-x-2">
+                            <span class="px-1.5 py-0.5 rounded border text-[10px] font-bold ${badgeColor}">${det.id}</span>
+                            <div>
+                                <div class="text-white font-semibold">${det.class_name}</div>
+                                <div class="text-[10px] text-slate-400">${isKnown ? `Conf: ${Math.round(det.confidence * 100)}%` : `Anomaly: ${det.anomaly_score}`}</div>
+                            </div>
+                        </div>
+                        <span class="px-1.5 py-0.5 rounded border text-[10px] font-bold ${priorityBadge}">${det.priority}</span>
+                    `;
+                    targetListEl.appendChild(item);
+                });
+            }
 
             // Update Geotagged Map with Sonar Detections and Survey Trackline
             const mapEl = document.getElementById('geotagMap');

@@ -11,13 +11,16 @@ def test_acoustic_feature_extraction():
 
 def test_anomaly_discovery_scoring():
     engine = AnomalyDiscoveryEngine()
-    # If not fitted, verify it provides safe defaults
     dummy_seabed = np.random.normal(100, 15, (128, 128)).astype(np.uint8)
     res = engine.score_patch(dummy_seabed)
 
     assert "anomaly_score" in res
+    assert "negative_log_likelihood" in res
+    assert "mahalanobis_dist" in res
     assert "nearest_cluster_id" in res
     assert "nearest_cluster_dist" in res
     assert "is_anomaly" in res
     assert 0.0 <= res["anomaly_score"] <= 1.0
+    assert isinstance(res["negative_log_likelihood"], float)
+    assert isinstance(res["mahalanobis_dist"], float)
 

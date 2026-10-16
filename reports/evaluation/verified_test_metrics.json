@@ -1,6 +1,6 @@
 {
-    "weights_path": "C:\\Users\\vuday\\OneDrive\\Desktop\\sih26057\\ml\\detection\\weights\\best.pt",
-    "dataset_yaml": "D:\\USIP_DATA\\unified_sonar_dataset\\dataset.yaml",
+    "weights_path": "ml/detection/weights/best.pt",
+    "dataset_yaml": "D:/USIP_DATA/unified_sonar_dataset/dataset.yaml",
     "split_evaluated": "test",
     "image_size": 640,
     "batch_size": 4,
