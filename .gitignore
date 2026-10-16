@@ -1,0 +1,23 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pytest_cache/
+.pytest_cache/
+
+# Environments
+env/
+venv/
+usip_env/
+*.env
+
+# SQLite Database
+*.db-journal
+
+# Temporary static test inference uploads
+backend/static/results/*
+!backend/static/results/.gitkeep
+
+# OS generated
+.DS_Store
+Thumbs.db

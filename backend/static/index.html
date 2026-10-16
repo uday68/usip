@@ -121,62 +121,47 @@
     </header>
 
     <!-- Quick Demo Preset Bar -->
-    <div class="bg-marine-900/80 border-b border-marine-800 px-6 py-2.5 flex items-center justify-between text-xs overflow-x-auto gap-4">
-        <div class="flex items-center space-x-2 text-slate-400 font-mono flex-shrink-0">
-            <i data-lucide="play-circle" class="w-4 h-4 text-marine-accent"></i>
-            <span class="uppercase tracking-wider font-semibold text-slate-300">Judge Demo Presets:</span>
+    <!-- Quick Demo Preset Bar -->
+    <div class="bg-marine-900 border-b border-marine-700 px-6 py-2.5 flex items-center justify-between text-xs overflow-x-auto gap-3">
+        <div class="flex items-center space-x-2 text-slate-300 font-mono flex-shrink-0">
+            <i data-lucide="play-circle" class="w-4 h-4 text-cyan-400"></i>
+            <span class="uppercase tracking-wider font-bold text-white">1-Click Presets:</span>
         </div>
         <div class="flex items-center space-x-2 flex-grow overflow-x-auto py-0.5">
-            <button onclick="loadDemoSample('shipwreck_1')" class="demo-btn px-2.5 py-1 rounded bg-marine-800 hover:bg-marine-700 text-slate-200 border border-marine-600 font-mono flex items-center space-x-1.5 transition flex-shrink-0">
+            <button onclick="loadDemoSample('montana')" class="demo-btn px-3 py-1.5 rounded-md bg-emerald-950/70 hover:bg-emerald-900 border border-emerald-600 font-mono text-emerald-300 flex items-center space-x-1.5 transition flex-shrink-0 shadow">
                 <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-                <span>Wreck 1 (E.B. Allen)</span>
+                <span>Wreck: Montana (NOAA)</span>
             </button>
-            <button onclick="loadDemoSample('shipwreck_2')" class="demo-btn px-2.5 py-1 rounded bg-marine-800 hover:bg-marine-700 text-slate-200 border border-marine-600 font-mono flex items-center space-x-1.5 transition flex-shrink-0">
+            <button onclick="loadDemoSample('pewabic')" class="demo-btn px-3 py-1.5 rounded-md bg-marine-800 hover:bg-marine-700 border border-marine-600 font-mono text-slate-200 flex items-center space-x-1.5 transition flex-shrink-0 shadow">
                 <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-                <span>Wreck 2 (D.R. Hanna)</span>
+                <span>Wreck: Pewabic (1865)</span>
             </button>
-            <button onclick="loadDemoSample('shipwreck_3')" class="demo-btn px-2.5 py-1 rounded bg-marine-800 hover:bg-marine-700 text-slate-200 border border-marine-600 font-mono flex items-center space-x-1.5 transition flex-shrink-0">
+            <button onclick="loadDemoSample('grecian')" class="demo-btn px-3 py-1.5 rounded-md bg-marine-800 hover:bg-marine-700 border border-marine-600 font-mono text-slate-200 flex items-center space-x-1.5 transition flex-shrink-0 shadow">
                 <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-                <span>Wreck 3 (Isaac Scott - 524ft)</span>
+                <span>Wreck: Grecian</span>
             </button>
-            <button onclick="loadDemoSample('shipwreck_4')" class="demo-btn px-2.5 py-1 rounded bg-marine-800 hover:bg-marine-700 text-slate-200 border border-marine-600 font-mono flex items-center space-x-1.5 transition flex-shrink-0">
-                <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-                <span>Wreck 4 (Pewabic)</span>
-            </button>
-            <button onclick="loadDemoSample('pipe_1')" class="demo-btn px-2.5 py-1 rounded bg-marine-800 hover:bg-marine-700 text-slate-200 border border-marine-600 font-mono flex items-center space-x-1.5 transition flex-shrink-0">
-                <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-                <span>Pipeline 1 (SubPipe)</span>
-            </button>
-            <button onclick="loadDemoSample('pipe_2')" class="demo-btn px-2.5 py-1 rounded bg-marine-800 hover:bg-marine-700 text-slate-200 border border-marine-600 font-mono flex items-center space-x-1.5 transition flex-shrink-0">
-                <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-                <span>Pipeline 2 (Field Joint)</span>
-            </button>
-            <button onclick="loadDemoSample('debris_1')" class="demo-btn px-2.5 py-1 rounded bg-marine-800 hover:bg-marine-700 text-slate-200 border border-marine-600 font-mono flex items-center space-x-1.5 transition flex-shrink-0">
-                <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-                <span>Debris 1 (AquaScan)</span>
-            </button>
-            <button onclick="loadDemoSample('debris_2')" class="demo-btn px-2.5 py-1 rounded bg-marine-800 hover:bg-marine-700 text-slate-200 border border-marine-600 font-mono flex items-center space-x-1.5 transition flex-shrink-0">
-                <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-                <span>Debris 2 (Target on Ripple)</span>
-            </button>
-            <button onclick="loadDemoSample('ssl_seabed_1')" class="demo-btn px-2.5 py-1 rounded bg-marine-800 hover:bg-marine-700 text-cyan-300 border border-cyan-700 font-mono flex items-center space-x-1.5 transition flex-shrink-0">
+            <button onclick="loadDemoSample('pipe_5')" class="demo-btn px-3 py-1.5 rounded-md bg-cyan-950/70 hover:bg-cyan-900 border border-cyan-600 font-mono text-cyan-300 flex items-center space-x-1.5 transition flex-shrink-0 shadow">
                 <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
-                <span>Unlabelled SSL Seabed #1</span>
+                <span>Pipeline (SubPipe)</span>
             </button>
-            <button onclick="loadDemoSample('ssl_seabed_2')" class="demo-btn px-2.5 py-1 rounded bg-marine-800 hover:bg-marine-700 text-cyan-300 border border-cyan-700 font-mono flex items-center space-x-1.5 transition flex-shrink-0">
-                <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
-                <span>Unlabelled SSL Seabed #2</span>
+            <button onclick="loadDemoSample('debris_8')" class="demo-btn px-3 py-1.5 rounded-md bg-amber-950/70 hover:bg-amber-900 border border-amber-600 font-mono text-amber-300 flex items-center space-x-1.5 transition flex-shrink-0 shadow">
+                <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+                <span>Debris Cluster (AquaScan)</span>
             </button>
-            <button onclick="loadDemoSample('anomaly_1')" class="demo-btn px-2.5 py-1 rounded bg-amber-950/60 hover:bg-amber-900/60 text-amber-300 border border-amber-600 font-mono flex items-center space-x-1.5 transition flex-shrink-0">
-                <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+            <button onclick="loadDemoSample('unlabelled_ssl_1')" class="demo-btn px-3 py-1.5 rounded-md bg-blue-950/70 hover:bg-blue-900 border border-blue-500 font-mono text-blue-300 flex items-center space-x-1.5 transition flex-shrink-0 shadow">
+                <span class="w-2 h-2 rounded-full bg-blue-400"></span>
+                <span>SSL Seabed Tile (N713-384)</span>
+            </button>
+            <button onclick="loadDemoSample('anomaly_1')" class="demo-btn px-3 py-1.5 rounded-md bg-rose-950/70 hover:bg-rose-900 border border-rose-600 font-mono text-rose-300 flex items-center space-x-1.5 transition flex-shrink-0 shadow">
+                <span class="w-2 h-2 rounded-full bg-rose-400 animate-ping"></span>
                 <span>Acoustic Anomaly [Exp]</span>
             </button>
         </div>
 
         <!-- Custom Upload Trigger -->
-        <label class="px-3 py-1 bg-marine-700 hover:bg-marine-600 text-white rounded font-mono flex items-center space-x-1.5 cursor-pointer transition border border-marine-500 flex-shrink-0">
-            <i data-lucide="upload" class="w-3.5 h-3.5 text-marine-accent"></i>
-            <span>Upload Sonar File</span>
+        <label class="px-3.5 py-1.5 bg-marine-700 hover:bg-marine-600 text-white rounded-md font-mono flex items-center space-x-1.5 cursor-pointer transition border border-marine-500 flex-shrink-0 shadow">
+            <i data-lucide="upload" class="w-4 h-4 text-cyan-400"></i>
+            <span class="font-bold">Upload Sonar File</span>
             <input type="file" id="fileInput" accept="image/*" class="hidden" onchange="handleFileUpload(event)">
         </label>
     </div>
@@ -312,6 +297,29 @@
                         <span>DEPTH: <strong class="text-slate-200">28.4 m</strong></span>
                     </div>
                 </div>
+
+                <!-- Section 2.2: Human-in-the-Loop Analyst Review Queue (Prominent Position) -->
+                <div class="mt-3 p-3 rounded-lg border-2 border-emerald-500/50 bg-marine-900 shadow-xl space-y-2.5">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-2">
+                            <i data-lucide="user-check" class="w-4 h-4 text-emerald-400"></i>
+                            <span class="font-mono text-xs font-bold uppercase tracking-wider text-emerald-300">Human Analyst Verification:</span>
+                        </div>
+                        <span id="reviewStatusBadge" class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 font-bold">STATUS: PENDING</span>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button onclick="submitCandidateReview('confirmed')" class="px-2.5 py-2 bg-emerald-700 hover:bg-emerald-600 border-2 border-emerald-400 rounded text-xs font-mono font-bold text-white shadow-lg transition flex items-center justify-center gap-1.5 active:scale-95">
+                            <i data-lucide="check-circle" class="w-4 h-4"></i> CONFIRM
+                        </button>
+                        <button onclick="submitCandidateReview('rejected')" class="px-2.5 py-2 bg-red-700 hover:bg-red-600 border-2 border-red-400 rounded text-xs font-mono font-bold text-white shadow-lg transition flex items-center justify-center gap-1.5 active:scale-95">
+                            <i data-lucide="x-circle" class="w-4 h-4"></i> REJECT
+                        </button>
+                        <button onclick="submitCandidateReview('uncertain')" class="px-2.5 py-2 bg-amber-700 hover:bg-amber-600 border-2 border-amber-400 rounded text-xs font-mono font-bold text-white shadow-lg transition flex items-center justify-center gap-1.5 active:scale-95">
+                            <i data-lucide="help-circle" class="w-4 h-4"></i> UNCERTAIN
+                        </button>
+                    </div>
+                    <input id="analystNotesInput" type="text" placeholder="Add analyst notes (e.g. verified 2.4m relief shadow)..." class="w-full bg-marine-950 border border-marine-600 rounded px-2.5 py-1.5 text-xs text-slate-100 font-mono focus:border-cyan-400 focus:outline-none"/>
+                </div>
             </div>
 
             <!-- Section 2.5: Real-Time Geotagged Sonar Map -->
@@ -325,31 +333,6 @@
                 </div>
                 <div id="geotagMap" class="h-44 w-full rounded-lg border border-marine-700 bg-black overflow-hidden z-10"></div>
                 <div id="mapUnavailableNotice" class="hidden p-3 bg-marine-950 border border-amber-900/80 rounded text-[11px] text-amber-300 font-mono">Spatial map unavailable — navigation metadata not provided.</div>
-            </div>
-
-            <!-- Section 2.8: Human-in-the-Loop Analyst Review Queue -->
-            <div class="p-4 border-b border-marine-800 bg-marine-850/70">
-                <div class="flex items-center justify-between mb-2">
-                    <div class="flex items-center space-x-2">
-                        <i data-lucide="user-check" class="w-4 h-4 text-emerald-400"></i>
-                        <span class="font-mono text-xs font-bold uppercase tracking-wider text-slate-200">Analyst Review Queue</span>
-                    </div>
-                    <span id="reviewStatusBadge" class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">PENDING</span>
-                </div>
-                <div class="space-y-2">
-                    <div class="grid grid-cols-3 gap-1.5">
-                        <button onclick="submitCandidateReview('confirmed')" class="px-2 py-1.5 bg-emerald-900/60 hover:bg-emerald-800 border border-emerald-600 rounded text-[11px] font-mono font-bold text-emerald-300 transition flex items-center justify-center gap-1">
-                            <i data-lucide="check-circle" class="w-3.5 h-3.5"></i> Confirm
-                        </button>
-                        <button onclick="submitCandidateReview('rejected')" class="px-2 py-1.5 bg-red-900/60 hover:bg-red-800 border border-red-600 rounded text-[11px] font-mono font-bold text-red-300 transition flex items-center justify-center gap-1">
-                            <i data-lucide="x-circle" class="w-3.5 h-3.5"></i> Reject
-                        </button>
-                        <button onclick="submitCandidateReview('uncertain')" class="px-2 py-1.5 bg-amber-900/60 hover:bg-amber-800 border border-amber-600 rounded text-[11px] font-mono font-bold text-amber-300 transition flex items-center justify-center gap-1">
-                            <i data-lucide="help-circle" class="w-3.5 h-3.5"></i> Uncertain
-                        </button>
-                    </div>
-                    <input id="analystNotesInput" type="text" placeholder="Analyst notes (e.g., confirmed shadow gradient)" class="w-full bg-marine-950 border border-marine-700 rounded px-2.5 py-1.5 text-xs text-slate-200 font-mono focus:border-marine-accent focus:outline-none"/>
-                </div>
             </div>
 
             <!-- Section 3: Google Colab Cloud Training Card -->
@@ -441,8 +424,8 @@
         async function init() {
             lucide.createIcons();
             initMap();
-            // Load initial demonstration shipwreck
-            await loadDemoSample('shipwreck_1');
+            // Load initial demonstration shipwreck (Montana)
+            await loadDemoSample('montana');
         }
 
         async function loadDemoSample(sampleId) {
@@ -484,6 +467,7 @@
                 alert('Upload error: ' + err.message);
             } finally {
                 showLoading(false);
+                e.target.value = ''; // Allow re-uploading same or next file
             }
         }
 
@@ -498,15 +482,22 @@
             document.getElementById('imageDim').innerText = `${currentAnalysis.image_width} x ${currentAnalysis.image_height} px`;
             document.getElementById('detectionCountBadge').innerText = `${currentAnalysis.detections.length} Targets`;
 
-            // Load images into memory
-            processedImage.src = currentAnalysis.processed_image_url;
-            rawImage.src = currentAnalysis.raw_image_url;
-
+            // Setup image loading before assigning src
             processedImage.onload = () => {
                 canvas.width = currentAnalysis.image_width;
                 canvas.height = currentAnalysis.image_height;
                 renderCanvas();
             };
+            processedImage.onerror = () => {
+                console.warn('Warning: processedImage failed to load, falling back to raw render');
+                canvas.width = currentAnalysis.image_width;
+                canvas.height = currentAnalysis.image_height;
+                renderCanvas();
+            };
+
+            // Load images into memory
+            processedImage.src = currentAnalysis.processed_image_url;
+            rawImage.src = currentAnalysis.raw_image_url;
 
             // Render Target List
             const targetListEl = document.getElementById('targetList');

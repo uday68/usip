@@ -1,0 +1,35 @@
+{
+    "weights_path": "C:\\Users\\vuday\\OneDrive\\Desktop\\sih26057\\ml\\detection\\weights\\best.pt",
+    "dataset_yaml": "D:\\USIP_DATA\\unified_sonar_dataset\\dataset.yaml",
+    "split_evaluated": "test",
+    "image_size": 640,
+    "batch_size": 4,
+    "device": "cuda",
+    "overall_metrics": {
+        "mAP50": 0.1483048399288124,
+        "mAP50_95": 0.05321370844737643,
+        "precision": 0.2130075392246121,
+        "recall": 0.237975125325211,
+        "fitness": 0.05321370844737643
+    },
+    "per_class": {
+        "Shipwreck": {
+            "precision": 0.26336470199942685,
+            "recall": 0.1796116504854369,
+            "mAP50": 0.135860398292808,
+            "mAP50_95": 0.05916435363703295
+        },
+        "Pipeline": {
+            "precision": 0.06288023831779395,
+            "recall": 0.08333333333333333,
+            "mAP50": 0.03066964285714286,
+            "mAP50_95": 0.003066964285714286
+        },
+        "Debris": {
+            "precision": 0.3127776773566155,
+            "recall": 0.45098039215686275,
+            "mAP50": 0.2783844786364864,
+            "mAP50_95": 0.09740980741938209
+        }
+    }
+}

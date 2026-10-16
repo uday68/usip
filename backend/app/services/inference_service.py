@@ -35,7 +35,7 @@ class InferenceService:
 
         # If anomaly engine not yet fitted, fit on SSL sample
         if not self.anomaly_engine.is_fitted:
-            ssl_sample_dir = Path("D:/USIP_SSL_SAMPLE")
+            ssl_sample_dir = config.ssl_sample_dir
             if ssl_sample_dir.exists():
                 self.anomaly_engine.fit_from_normal_seabed(ssl_sample_dir)
 
@@ -81,16 +81,28 @@ class InferenceService:
         # 2. Metadata Ingestion
         metadata = self.metadata_engine.parse(filename)
 
-        # Save images to static results directory for UI display
+        # Save images to static results directory for UI display (always PNG for browser compatibility)
         session_id = uuid.uuid4().hex[:8]
-        raw_out_filename = f"{session_id}_raw_{filename}"
-        proc_out_filename = f"{session_id}_processed_{filename}"
+        clean_stem = Path(filename).stem
+        raw_out_filename = f"{session_id}_raw_{clean_stem}.png"
+        proc_out_filename = f"{session_id}_processed_{clean_stem}.png"
         
         raw_save_path = STATIC_RESULTS_DIR / raw_out_filename
         proc_save_path = STATIC_RESULTS_DIR / proc_out_filename
         
-        # Save raw and enhanced
-        cv2.imwrite(str(raw_save_path), raw_img)
+        # Prepare browser-friendly display image (handle 4-channel XTF/TIFF & 16-bit)
+        if len(raw_img.shape) == 3 and raw_img.shape[2] == 4:
+            raw_display = cv2.cvtColor(raw_img[:, :, :3], cv2.COLOR_BGR2RGB)
+        elif len(raw_img.shape) == 3:
+            raw_display = raw_img
+        else:
+            raw_display = raw_img
+            
+        if raw_display.dtype != np.uint8:
+            raw_display = cv2.normalize(raw_display, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+            
+        # Save raw and enhanced as standard web PNGs
+        cv2.imwrite(str(raw_save_path), raw_display)
         cv2.imwrite(str(proc_save_path), enhanced_gray)
 
         # 3. Supervised Target Detection

@@ -1,5 +1,5 @@
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 import datetime
 
 class BoundingBoxSchema(BaseModel):
@@ -9,6 +9,8 @@ class BoundingBoxSchema(BaseModel):
     height: float
 
 class CandidateOutSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     candidate_id: str
     source: str
@@ -26,9 +28,6 @@ class CandidateOutSchema(BaseModel):
     metadata_available: bool
     geolocation_note: str
     explanation: str
-
-    class Config:
-        from_attributes = True
 
 class ReviewCreateSchema(BaseModel):
     candidate_id: str
@@ -61,6 +60,8 @@ class InferenceResponseSchema(BaseModel):
     device_used: str
 
 class SurveySummarySchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     survey_name: str
     vessel_name: str
@@ -68,9 +69,6 @@ class SurveySummarySchema(BaseModel):
     created_at: datetime.datetime
     image_count: int
     candidate_count: int
-
-    class Config:
-        from_attributes = True
 
 class HealthResponseSchema(BaseModel):
     status: str

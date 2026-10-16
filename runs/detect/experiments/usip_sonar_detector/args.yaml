@@ -2,7 +2,7 @@ task: detect
 mode: train
 model: yolov8n.pt
 data: D:\USIP_DATA\unified_sonar_dataset\dataset.yaml
-epochs: 10
+epochs: 25
 time: null
 patience: 100
 batch: 4
@@ -19,12 +19,12 @@ pretrained: true
 cls_remap: true
 optimizer: auto
 verbose: true
-seed: 0
+seed: 42
 deterministic: true
 single_cls: false
 rect: false
-cos_lr: false
-close_mosaic: 2
+cos_lr: true
+close_mosaic: 8
 resume: false
 amp: true
 fraction: 1.0
@@ -103,7 +103,7 @@ perspective: 0.0
 flipud: 0.0
 fliplr: 0.5
 bgr: 0.0
-mosaic: 0.5
+mosaic: 0.15
 mixup: 0.0
 cutmix: 0.0
 copy_paste: 0.0

@@ -3,38 +3,43 @@ import json
 from pathlib import Path
 import numpy as np
 import cv2
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Optional
 from sklearn.cluster import MiniBatchKMeans
+from sklearn.mixture import GaussianMixture
 from sklearn.preprocessing import StandardScaler
 import joblib
+
+from configs.settings import config
+from ml.utils import set_deterministic_seeds
 
 WEIGHTS_DIR = Path("ml/anomaly/weights")
 WEIGHTS_DIR.mkdir(parents=True, exist_ok=True)
 
 MODEL_FILE = WEIGHTS_DIR / "seabed_clusters.joblib"
+GMM_FILE = WEIGHTS_DIR / "seabed_gmm.joblib"
 SCALER_FILE = WEIGHTS_DIR / "feature_scaler.joblib"
 STATS_FILE = WEIGHTS_DIR / "seabed_stats.json"
 
 def extract_acoustic_features(crop_gray: np.ndarray) -> np.ndarray:
     """
     Extract multi-scale acoustic backscatter texture features from a sonar patch:
-    1. Statistical moments (mean, std, skewness, kurtosis)
-    2. High-frequency speckle entropy
-    3. Multi-orientation Gabor filter acoustic energy
-    4. Gradient magnitude distribution
+    1. Statistical moments (mean, std, skewness, kurtosis) [4]
+    2. High-frequency speckle entropy [1]
+    3. Spatial gradient magnitude distribution (Sobel) [2]
+    4. Multi-orientation Gabor filter acoustic energy [4]
+    Total feature dimension: 11
     """
     if len(crop_gray.shape) == 3:
         crop_gray = cv2.cvtColor(crop_gray, cv2.COLOR_BGR2GRAY)
 
-    h, w = crop_gray.shape[:2]
     patch_resized = cv2.resize(crop_gray, (128, 128)).astype(np.float32)
 
     # 1. Statistical moments
     mean_val = float(np.mean(patch_resized))
     std_val = float(np.std(patch_resized))
     norm_patch = (patch_resized - mean_val) / (std_val + 1e-5)
-    skew_val = float(np.mean(norm_patch ** 3))
-    kurt_val = float(np.mean(norm_patch ** 4))
+    skew_val = float(np.clip(np.mean(norm_patch ** 3), -10.0, 10.0))
+    kurt_val = float(np.clip(np.mean(norm_patch ** 4), 0.0, 50.0))
 
     # 2. Entropy / Energy
     hist, _ = np.histogram(patch_resized, bins=16, range=(0, 256), density=True)
@@ -67,13 +72,22 @@ class AnomalyDiscoveryEngine:
     """
     Unsupervised Acoustic Anomaly Discovery Engine.
     Trained strictly on normal seabed acoustic patches (from sss_ssl_dataset_N713_384).
-    Calculates novelty distance from baseline seafloor clusters.
+    Uses a hybrid Gaussian Mixture Model with Tied/Full Covariance and MiniBatchKMeans:
+    - Mahalanobis distance and negative log-likelihood account for correlated acoustic features.
+    - Avoids false alarms on natural bedforms (e.g. sand ripples) while flagging true acoustic anomalies.
     """
     def __init__(self, n_clusters: int = 8):
         self.n_clusters = n_clusters
         self.scaler = StandardScaler()
-        self.kmeans = MiniBatchKMeans(n_clusters=n_clusters, random_state=42, batch_size=64)
+        self.kmeans = MiniBatchKMeans(n_clusters=n_clusters, random_state=config.seed, batch_size=64)
+        self.gmm = GaussianMixture(
+            n_components=n_clusters, 
+            covariance_type="tied", 
+            reg_covar=1e-3, 
+            random_state=config.seed
+        )
         self.max_normal_dist = 3.5  # calibrated 95th percentile normal distance
+        self.inv_cov = None        # Tied inverse covariance for Mahalanobis metric
         self.is_fitted = False
 
         self._load_or_initialize()
@@ -83,18 +97,28 @@ class AnomalyDiscoveryEngine:
             try:
                 self.kmeans = joblib.load(MODEL_FILE)
                 self.scaler = joblib.load(SCALER_FILE)
+                if GMM_FILE.exists():
+                    self.gmm = joblib.load(GMM_FILE)
+                    if hasattr(self.gmm, "precisions_"):
+                        # In tied covariance, precisions_ is (D, D) or (1, D, D)
+                        self.inv_cov = self.gmm.precisions_[0] if self.gmm.precisions_.ndim == 3 else self.gmm.precisions_
+
                 with open(STATS_FILE, "r") as f:
                     stats = json.load(f)
-                    self.max_normal_dist = stats.get("max_normal_dist", 3.5)
+                    self.max_normal_dist = float(stats.get("max_normal_dist", 3.5))
                 self.is_fitted = True
-                print("Loaded pre-trained acoustic seabed anomaly model.")
+                print("Loaded pre-trained acoustic seabed anomaly model (Covariance-Aware GMM & KMeans).")
             except Exception as e:
                 print(f"Error loading anomaly model: {e}. Will fit on available SSL sample.")
 
-    def fit_from_normal_seabed(self, ssl_dir: Path = Path("D:/USIP_SSL_SAMPLE")):
+    def fit_from_normal_seabed(self, ssl_dir: Optional[Path] = None):
         """
         Fits baseline clusters using unlabelled normal seabed tiles from sss_ssl_dataset_N713_384.
         """
+        if ssl_dir is None:
+            ssl_dir = config.ssl_sample_dir
+
+        set_deterministic_seeds(config.seed)
         print(f"Fitting unsupervised acoustic anomaly engine on normal seabed: {ssl_dir}")
         if not ssl_dir.exists():
             print(f"Directory {ssl_dir} not found. Cannot fit anomaly engine.")
@@ -121,27 +145,42 @@ class AnomalyDiscoveryEngine:
 
         X = np.array(features)
         X_scaled = self.scaler.fit_transform(X)
+
+        # 1. Fit KMeans for fast centroid lookups
         self.kmeans.fit(X_scaled)
 
-        # Calculate distances of training seabed samples to their nearest centroid
-        distances = np.min(self.kmeans.transform(X_scaled), axis=1)
-        # 95th percentile distance defines normal boundary
+        # 2. Fit Tied-Covariance GMM for Mahalanobis acoustic metric
+        self.gmm.fit(X_scaled)
+        self.inv_cov = self.gmm.precisions_[0] if self.gmm.precisions_.ndim == 3 else self.gmm.precisions_
+
+        # Calculate Mahalanobis distances to nearest cluster center on normal training set
+        distances = []
+        for x in X_scaled:
+            diffs = self.kmeans.cluster_centers_ - x[np.newaxis, :]  # (K, D)
+            # Mahalanobis: sqrt(diff * inv_cov * diff.T)
+            maha_dists = np.sqrt(np.sum((diffs @ self.inv_cov) * diffs, axis=1))
+            distances.append(np.min(maha_dists))
+
+        distances = np.array(distances)
+        # 95th percentile distance defines the calibrated normal threshold
         self.max_normal_dist = float(np.percentile(distances, 95.0))
 
         # Save artifacts
         joblib.dump(self.kmeans, MODEL_FILE)
+        joblib.dump(self.gmm, GMM_FILE)
         joblib.dump(self.scaler, SCALER_FILE)
         with open(STATS_FILE, "w") as f:
             json.dump({
                 "num_samples": len(features),
                 "n_clusters": self.n_clusters,
+                "covariance_model": "GMM_tied",
                 "max_normal_dist": self.max_normal_dist,
                 "mean_dist": float(np.mean(distances)),
                 "std_dist": float(np.std(distances))
             }, f, indent=4)
 
         self.is_fitted = True
-        print(f"Anomaly engine fitted successfully on {len(features)} acoustic patches. Threshold: {self.max_normal_dist:.3f}")
+        print(f"Anomaly engine fitted successfully on {len(features)} acoustic patches. Calibrated Threshold: {self.max_normal_dist:.3f}")
 
     def score_patch(self, crop_gray: np.ndarray) -> Dict[str, Any]:
         """
@@ -149,7 +188,7 @@ class AnomalyDiscoveryEngine:
         Outputs:
         - anomaly_score: [0.0, 1.0]
         - nearest_cluster_id
-        - nearest_cluster_dist
+        - nearest_cluster_dist (Mahalanobis novelty distance)
         - is_anomaly
         - explanation
         """
@@ -165,9 +204,18 @@ class AnomalyDiscoveryEngine:
 
         feat = extract_acoustic_features(crop_gray).reshape(1, -1)
         feat_scaled = self.scaler.transform(feat)
-        dists = self.kmeans.transform(feat_scaled)[0]
-        nearest_cluster_id = int(np.argmin(dists))
-        min_dist = float(dists[nearest_cluster_id])
+
+        if self.inv_cov is not None:
+            # Mahalanobis distance to each cluster center
+            diffs = self.kmeans.cluster_centers_ - feat_scaled  # (K, D)
+            maha_dists = np.sqrt(np.sum((diffs @ self.inv_cov) * diffs, axis=1))
+            nearest_cluster_id = int(np.argmin(maha_dists))
+            min_dist = float(maha_dists[nearest_cluster_id])
+        else:
+            # Fallback Euclidean distance
+            dists = self.kmeans.transform(feat_scaled)[0]
+            nearest_cluster_id = int(np.argmin(dists))
+            min_dist = float(dists[nearest_cluster_id])
 
         # Normalized anomaly score: 0 (matches normal centroid) to 1.0 (novel acoustic signature)
         normalized_score = min(1.0, min_dist / (self.max_normal_dist * 1.8))
@@ -176,7 +224,7 @@ class AnomalyDiscoveryEngine:
         if is_anomaly:
             explanation = (
                 f"Acoustic texture departs significantly from normal sediment clusters "
-                f"(Novelty Distance: {min_dist:.2f} > baseline {self.max_normal_dist:.2f}). "
+                f"(Mahalanobis Distance: {min_dist:.2f} > baseline {self.max_normal_dist:.2f}). "
                 f"Candidate requiring expert review."
             )
         else:

@@ -38,17 +38,39 @@ def dynamic_range_normalize(
     stretched = np.clip((gray_float - val_low) / (val_high - val_low) * 255.0, 0, 255.0)
     return stretched.astype(np.uint8)
 
+def estimate_speckle_noise(gray: np.ndarray) -> float:
+    """
+    Robust acoustic speckle noise standard deviation estimation.
+    Uses Median Absolute Deviation (MAD) on high-pass Laplacian residuals:
+    sigma = median(|resid - median(resid)|) / 0.6745
+    """
+    lap = cv2.Laplacian(gray.astype(np.float32), cv2.CV_32F, ksize=3)
+    abs_lap = np.abs(lap - np.median(lap))
+    sigma_n = float(np.median(abs_lap) / 0.6745)
+    return max(sigma_n, 1.0)
+
 def bilateral_despeckle(
     gray: np.ndarray, 
     d: int = 5, 
-    sigma_color: float = 40.0, 
-    sigma_space: float = 40.0
+    sigma_color: Optional[float] = None, 
+    sigma_space: Optional[float] = None,
+    adaptive: bool = True
 ) -> np.ndarray:
     """
     Speckle-aware smoothing that preserves sharp acoustic specular highlight boundaries
     and cast-shadow drop-offs while dampening high-frequency acoustic speckle.
+    If adaptive=True and sigma_color is None, dynamically sets sigma_color based on
+    estimated speckle noise level.
     """
-    return cv2.bilateralFilter(gray, d, sigma_color, sigma_space)
+    if adaptive and sigma_color is None:
+        noise_level = estimate_speckle_noise(gray)
+        # Scale filter strength proportionally to noise: higher noise requires stronger color filtering
+        sigma_c = float(np.clip(noise_level * 2.2, 20.0, 60.0))
+    else:
+        sigma_c = sigma_color if sigma_color is not None else 40.0
+
+    sigma_s = sigma_space if sigma_space is not None else 40.0
+    return cv2.bilateralFilter(gray, d, sigma_c, sigma_s)
 
 def adaptive_clahe(
     gray: np.ndarray, 
