@@ -2,22 +2,24 @@
 USIP Comprehensive Reproducibility & Verification Script
 ======================================================
 Automates end-to-end verification of:
-1. Dataset Split Integrity (Site/Date disjointness, 0-leakage MD5 verification).
-2. Detector Weights Cryptographic Hash Check.
-3. Deterministic Held-Out Test Split Evaluation (Asserting mAP@50 and per-class metrics).
-4. Dual-Metric Anomaly Discovery Engine Calibration.
+1. Detector Weights Cryptographic Hash Check.
+2. Dataset Split Integrity (Site/Date disjointness, 0-leakage MD5 verification).
+3. Dual-Metric Anomaly Discovery Engine Calibration.
+4. Deterministic Held-Out Test Split Evaluation (Asserting mAP@50 and per-class metrics).
 5. Inference Service Model Loading & Diagnostic Modes.
 
 Usage:
-    python scripts/reproduce_evaluation.py
+    python scripts/reproduce_evaluation.py [--strict] [--skip-eval]
 """
 
 import sys
+import argparse
 import hashlib
 import json
-import math
+import platform
 from pathlib import Path
 import numpy as np
+import torch
 
 # Ensure project root is in sys.path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -48,13 +50,27 @@ def verify_file_md5(file_path: Path) -> str:
     return hasher.hexdigest().lower()
 
 def main():
+    parser = argparse.ArgumentParser(description="USIP Comprehensive Verification Pipeline")
+    parser.add_argument("--strict", action="store_true", default=True, help="Fail if any prerequisite is skipped or missing (default: True)")
+    parser.add_argument("--no-strict", dest="strict", action="store_false", help="Allow skipped checks without non-zero exit code")
+    parser.add_argument("--skip-eval", action="store_true", default=False, help="Skip full held-out test evaluation pass (for fast sanity check)")
+    args = parser.parse_args()
+
     print("=" * 75)
     print("  USIP: COMPREHENSIVE REPRODUCIBILITY & VERIFICATION PIPELINE")
+    print("=" * 75)
+    print(f"  Platform      : {platform.system()} {platform.release()} ({platform.machine()})")
+    print(f"  Python        : {platform.python_version()}")
+    print(f"  PyTorch       : {torch.__version__} (CUDA: {torch.cuda.is_available()})")
+    if torch.cuda.is_available():
+        print(f"  Compute Device: {torch.cuda.get_device_name(0)}")
+    print(f"  Strict Mode   : {'ENABLED (Skipped checks count as failures)' if args.strict else 'DISABLED'}")
     print("=" * 75)
     
     set_deterministic_seeds(config.seed)
     passes = []
     failures = []
+    skipped = []
 
     # -------------------------------------------------------------
     # Checkpoint 1: Model Weights Cryptographic Hash
@@ -62,8 +78,9 @@ def main():
     print("\n[1/5] Verifying Trained Detector Weights...")
     weights_path = Path(config.model_path)
     if not weights_path.exists():
-        failures.append(f"Weights file not found at: {weights_path}")
-        print(f"  [FAIL] Missing weights at {weights_path}")
+        err_msg = f"Checkpoint 1 FAILED: Weights file not found at {weights_path}"
+        failures.append(err_msg)
+        print(f"  [FAIL] {err_msg}")
     else:
         actual_md5 = verify_file_md5(weights_path)
         print(f"  Weights Path : {weights_path}")
@@ -72,8 +89,9 @@ def main():
             passes.append("Checkpoint 1: Model weights MD5 strictly matches verified checkpoint.")
             print("  [PASS] Cryptographic weights signature matched.")
         else:
-            failures.append(f"Weights MD5 mismatch: expected {EXPECTED_WEIGHTS_MD5}, got {actual_md5}")
-            print(f"  [WARN] MD5 differs from reference ({EXPECTED_WEIGHTS_MD5})")
+            err_msg = f"Checkpoint 1 FAILED: Weights MD5 mismatch (expected {EXPECTED_WEIGHTS_MD5}, got {actual_md5})"
+            failures.append(err_msg)
+            print(f"  [FAIL] {err_msg}")
 
     # -------------------------------------------------------------
     # Checkpoint 2: Dataset Split Integrity & Zero-Leakage Audit
@@ -81,20 +99,28 @@ def main():
     print("\n[2/5] Auditing Dataset Split Partitioning & Checking Data Leakage...")
     dataset_dir = config.dataset_root
     if not dataset_dir.exists():
-        print(f"  [SKIP] Dataset directory {dataset_dir} not found on this system.")
+        msg = f"Checkpoint 2 SKIPPED: Dataset directory not found at {dataset_dir}"
+        if args.strict:
+            failures.append(f"Checkpoint 2 FAILED (Strict): Dataset directory not found at {dataset_dir}")
+            print(f"  [FAIL] {msg} (strict mode active)")
+        else:
+            skipped.append(msg)
+            print(f"  [SKIP] {msg}")
     else:
         audit_results = audit_dataset_integrity(dataset_dir)
         total_imgs = sum(audit_results.get("split_counts", {}).values())
         leakage_detected = audit_results.get("leakage", {}).get("leakage_detected", False)
         corrupt_labels = audit_results.get("corrupt_labels_count", 0)
+        out_of_bounds = audit_results.get("out_of_bounds_count", 0)
         
-        if not leakage_detected and corrupt_labels == 0:
+        if not leakage_detected and corrupt_labels == 0 and out_of_bounds == 0:
             passes.append(f"Checkpoint 2: Zero cross-split data leakage across {total_imgs} unified images.")
             print(f"  [PASS] 0 hash collisions between train/val/test splits.")
             print(f"  [PASS] 0 corrupt or out-of-bounds annotations.")
         else:
-            failures.append(f"Dataset audit found issues: leakage={leakage_detected}, {corrupt_labels} corrupt labels.")
-            print(f"  [FAIL] Found leakage ({leakage_detected}) or {corrupt_labels} corrupt annotations.")
+            err_msg = f"Checkpoint 2 FAILED: Dataset audit found issues (leakage={leakage_detected}, corrupt={corrupt_labels}, out_of_bounds={out_of_bounds})."
+            failures.append(err_msg)
+            print(f"  [FAIL] {err_msg}")
 
     # -------------------------------------------------------------
     # Checkpoint 3: Dual-Metric Anomaly Engine Validation
@@ -125,18 +151,32 @@ def main():
             print(f"  [PASS] Normal seabed score  : {norm_res['anomaly_score']:.4f} (D_M: {norm_res['mahalanobis_dist']:.2f}, NLL: {norm_res['negative_log_likelihood']:.2f})")
             print(f"  [PASS] Anomaly target score : {anom_res['anomaly_score']:.4f} (D_M: {anom_res['mahalanobis_dist']:.2f}, NLL: {anom_res['negative_log_likelihood']:.2f})")
         else:
-            failures.append("Anomaly Engine output metrics missing or anomaly ranking invalid.")
-            print("  [FAIL] Anomaly engine validation failed.")
+            err_msg = "Checkpoint 3 FAILED: Anomaly Engine metrics missing or anomaly ranking inverted."
+            failures.append(err_msg)
+            print(f"  [FAIL] {err_msg}")
     else:
-        failures.append("Anomaly Engine failed to load pre-trained weights.")
-        print("  [FAIL] Anomaly engine not fitted.")
+        err_msg = "Checkpoint 3 FAILED: Anomaly Engine failed to load pre-trained weights."
+        failures.append(err_msg)
+        print(f"  [FAIL] {err_msg}")
 
     # -------------------------------------------------------------
     # Checkpoint 4: Deterministic Held-Out Test Evaluation
     # -------------------------------------------------------------
     print("\n[4/5] Running Deterministic Held-Out Test Split Evaluation Pass...")
     yaml_path = dataset_dir / "dataset.yaml"
-    if dataset_dir.exists() and yaml_path.exists() and weights_path.exists():
+    if args.skip_eval:
+        msg = "Checkpoint 4 SKIPPED: Held-out evaluation bypassed via --skip-eval."
+        skipped.append(msg)
+        print(f"  [SKIP] {msg}")
+    elif not (dataset_dir.exists() and yaml_path.exists() and weights_path.exists()):
+        msg = f"Checkpoint 4 SKIPPED: Missing test dataset ({yaml_path.exists()}) or weights ({weights_path.exists()})."
+        if args.strict:
+            failures.append(f"Checkpoint 4 FAILED (Strict): Cannot evaluate held-out test split (prerequisites missing).")
+            print(f"  [FAIL] {msg} (strict mode active)")
+        else:
+            skipped.append(msg)
+            print(f"  [SKIP] {msg}")
+    else:
         eval_metrics = run_evaluation_verification(
             weights_path=weights_path,
             dataset_yaml=yaml_path,
@@ -161,10 +201,9 @@ def main():
             print(f"  [PASS] Pipeline mAP@50  : {per_class['Pipeline']['mAP50']:.4f}")
             print(f"  [PASS] Debris mAP@50    : {per_class['Debris']['mAP50']:.4f}")
         else:
-            failures.append(f"Evaluation metrics diverged beyond tolerance: map diff={map50_diff:.4f}")
-            print(f"  [FAIL] Evaluation divergence: mAP50 diff = {map50_diff:.4f}")
-    else:
-        print("  [SKIP] Evaluation pass skipped because test dataset or weights are not located.")
+            err_msg = f"Checkpoint 4 FAILED: Evaluation metrics diverged beyond tolerance: mAP50 diff={map50_diff:.4f}"
+            failures.append(err_msg)
+            print(f"  [FAIL] {err_msg}")
 
     # -------------------------------------------------------------
     # Checkpoint 5: Inference Service Strict Diagnostics Check
@@ -179,7 +218,12 @@ def main():
         passes.append("Checkpoint 5: Inference Service explicitly running verified custom-trained model weights.")
         print("  [PASS] Custom trained detector active in inference service.")
     else:
-        print(f"  [WARN] Inference service running in mode: {inference_service.model_status}")
+        err_msg = f"Checkpoint 5 FAILED: Inference service running in unverified/fallback mode ({inference_service.model_status})."
+        if args.strict:
+            failures.append(err_msg)
+            print(f"  [FAIL] {err_msg}")
+        else:
+            print(f"  [WARN] {err_msg}")
 
     # -------------------------------------------------------------
     # Final Summary Report
@@ -189,14 +233,18 @@ def main():
     print("=" * 75)
     print(f"Passed Checks   : {len(passes)}")
     print(f"Failed Checks   : {len(failures)}")
+    print(f"Skipped Checks  : {len(skipped)}")
     print("-" * 75)
     for p in passes:
         print(f"  [✔] {p}")
+    for s in skipped:
+        print(f"  [⚠] {s}")
     for f in failures:
         print(f"  [✖] {f}")
     print("=" * 75)
 
     if failures:
+        print("\nVERIFICATION FAILED: One or more critical integrity checks did not pass.\n")
         sys.exit(1)
     else:
         print("\nALL VERIFICATION PASSES COMPLETED SUCCESSFULLY.\n")

@@ -32,7 +32,7 @@ def _find_zip_file(zip_filename: str) -> Optional[Path]:
 AI4_TRAIN_SITES = [
     'DM_Wilson', 'DR_Hanna', 'EB_Allen', 'Egyptian', 
     'Grecian', 'Heart_Failure', 'Isaac_M_Scott', 'Montana', 
-    'Near_Shore', 'Oscar_T_Flint'
+    'Near_Shore', 'Oscar_T_Flint', 'Exploratory', 'Mischelley'
 ]
 AI4_VAL_SITES = ['Pewabic', 'WP_Rend']
 AI4_TEST_SITES = [
@@ -105,8 +105,10 @@ def compile_shipwrecks():
             elif site_prefix in AI4_TEST_SITES:
                 split = "test"
             else:
-                # Default extras/unassigned to train
-                split = "train"
+                raise ValueError(
+                    f"[Compiler Error] Unrecognized shipwreck site '{site_prefix}' from file '{base_filename}'. "
+                    f"All source sites must have explicit disjoint split assignment to guarantee benchmark integrity."
+                )
 
             # Corresponding mask
             mask_name = img_name.replace("images/", "labels/")
@@ -188,8 +190,13 @@ def compile_aquascan():
                 split = "train"
             elif survey_date in AQUASCAN_VAL_DATES:
                 split = "val"
-            else:
+            elif survey_date in AQUASCAN_TEST_DATES:
                 split = "test"
+            else:
+                raise ValueError(
+                    f"[Compiler Error] Unrecognized AquaScan survey date '{survey_date}' from '{base_filename}'. "
+                    f"Must be explicitly declared in AQUASCAN_TRAIN_DATES, AQUASCAN_VAL_DATES, or AQUASCAN_TEST_DATES."
+                )
 
             # Label file
             lbl_name = img_name.replace("images/", "labels/").replace(".png", ".txt")
